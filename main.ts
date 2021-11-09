@@ -50,34 +50,39 @@ namespace motocart {
     let swWorldRtZ = false;
     let swWorldLtX = false;
     let swWorldLtZ = false;
+    let isClassroom = true;
     player.say("Ready to Roll!");
 	
     //% block
     function getMazeElevation(x:number,z:number):number {
         // convert coordinates to block coordinates
-		let xi = Math.floor(x);
+        let xi = Math.floor(x);
         let zi = Math.floor(120+z)
 
-		// range check to see if the point is on the map
-        if (xi<0) return 0;
-        if (xi>120) return 0;
-        if (zi>120) return 0;
-        if (zi<0) return 0;
-		
-		// get point offsets within the map tile
-		let xr = xi%10;
-		let zr = zi%10;
-		let xd = Math.floor(xi/10);
-		let zd = Math.floor(zi/10);
+        if (isClassroom) {
+            // range check to see if the point is on the map
+            if (xi<0) return 0;
+            if (xi>120) return 0;
+            if (zi>120) return 0;
+            if (zi<0) return 0;
+            
+            // get point offsets within the map tile
+            let xr = xi%10;
+            let zr = zi%10;
+            let xd = Math.floor(xi/10);
+            let zd = Math.floor(zi/10);
 
-		// take care of elevation transitions
-		if (xr==0) return Math.max(mapData[zd][xd].e,(mapData[zd][xd].e+mapData[zd][xd-1].e)/2);
-		if (xr==9) return Math.max(mapData[zd][xd].e,(mapData[zd][xd].e+mapData[zd][xd+1].e)/2);
-		if (zr==0) return Math.max(mapData[zd][xd].e,(mapData[zd][xd].e+mapData[zd-1][xd].e)/2);
-		if (zr==9) return Math.max(mapData[zd][xd].e,(mapData[zd][xd].e+mapData[zd+1][xd].e)/2);
+            // take care of elevation transitions
+            if (xr==0) return Math.max(mapData[zd][xd].e,(mapData[zd][xd].e+mapData[zd][xd-1].e)/2);
+            if (xr==9) return Math.max(mapData[zd][xd].e,(mapData[zd][xd].e+mapData[zd][xd+1].e)/2);
+            if (zr==0) return Math.max(mapData[zd][xd].e,(mapData[zd][xd].e+mapData[zd-1][xd].e)/2);
+            if (zr==9) return Math.max(mapData[zd][xd].e,(mapData[zd][xd].e+mapData[zd+1][xd].e)/2);
 
-		// otherwise, return the base elevation for the current tile
-		return mapData[zd][xd].e;
+            // otherwise, return the base elevation for the current tile
+            return mapData[zd][xd].e;
+        } else {
+            return positions.groundPosition(world(xi,ypos+2,zi)).getValue(Axis.Y);
+        }
     }
     
     //% block
@@ -86,37 +91,52 @@ namespace motocart {
         let xi = Math.floor(x);
         let zi = Math.floor(120+z)
 
-		// range check to see if the point is on the map
-        if (xi<0) return 'X';
-        if (xi>120) return 'X';
-        if (zi>120) return 'X';
-        if (zi<0) return 'X';
+        if (isClassroom) {
+            // range check to see if the point is on the map
+            if (xi<0) return 'X';
+            if (xi>120) return 'X';
+            if (zi>120) return 'X';
+            if (zi<0) return 'X';
 
-		// get point offsets within the map tile
-		let xr = xi%10;
-		let zr = zi%10;
-		let xd = Math.floor(xi/10);
-		let zd = Math.floor(zi/10);
-		
-		// get the block value for the current position
-		let tilenum = mapData[zd][xd].t;
-        if ((tilenum<0)||(tilenum>13)) return "0";
-		let blk = map_tile[tilenum][zr].substr(xr,1);
+            // get point offsets within the map tile
+            let xr = xi%10;
+            let zr = zi%10;
+            let xd = Math.floor(xi/10);
+            let zd = Math.floor(zi/10);
+            
+            // get the block value for the current position
+            let tilenum = mapData[zd][xd].t;
+            if ((tilenum<0)||(tilenum>13)) return "0";
+            let blk = map_tile[tilenum][zr].substr(xr,1);
 
-		// mask stop signs when the tile data calls for it
-		if ((blk=="1")||(blk=="2")||(blk=="3")||(blk=="4")) {
-			let msk = mapData[zd][xd].s;
-			if (msk==0) return blk;
-			// mask north
-			if (((msk&8)!=0)&&(zr==1)) return "_";
-			// mask south
-			if (((msk&4)!=0)&&(zr==8)) return "_";
-			// mask east
-			if (((msk&2)!=0)&&(xr==8)) return "_";
-			// mask west
-			if (((msk&1)!=0)&&(xr==1)) return "_";
-		}
-		return blk;
+            // mask stop signs when the tile data calls for it
+            if ((blk=="1")||(blk=="2")||(blk=="3")||(blk=="4")) {
+                let msk = mapData[zd][xd].s;
+                if (msk==0) return blk;
+                // mask north
+                if (((msk&8)!=0)&&(zr==1)) return "_";
+                // mask south
+                if (((msk&4)!=0)&&(zr==8)) return "_";
+                // mask east
+                if (((msk&2)!=0)&&(xr==8)) return "_";
+                // mask west
+                if (((msk&1)!=0)&&(xr==1)) return "_";
+            }
+            return blk;
+        } else {
+            // get the elevation of the block in question
+            let yi = getMazeElevation(xi,zi);
+
+            // there is no way to get the block type from the minecraft API.
+            // instead, individual checks must be made.
+            let blockpos = world(xi,yi,zi);
+            if (blocks.testForBlock(STONE_BRICKS_SLAB, blockpos)) return "X";
+            if (blocks.testForBlock(WHITE_CONCRETE, blockpos)) return "1";
+            if (blocks.testForBlock(WHITE_CONCRETE_POWDER, blockpos)) return "2";
+            if (blocks.testForBlock(BLOCK_OF_QUARTZ, blockpos)) return "3";
+            if (blocks.testForBlock(WOOL, blockpos)) return "4";
+            return "_";
+        }
     }
 
     // helper function to teleport to specific location and heading

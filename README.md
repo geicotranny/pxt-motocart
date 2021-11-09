@@ -3,18 +3,18 @@
 
 ## Use as Extension
 
-This repository can be added as an **extension** in MakeCode.
+This repository can be added as an **extension** in MakeCode either from the web site or from within Minecraft Education Edition.
 
 * open [https://minecraft.makecode.com/](https://minecraft.makecode.com/)
 * click on **New Project**
 * click on **Extensions** under the gearwheel menu
 * search for **https://github.com/dsandy12/pxt-motocart** and import
 
-## Edit this project ![Build status badge](https://github.com/dsandy12/pxt-motocart/workflows/MakeCode/badge.svg)
+## Edit this project
 
 To edit this repository in MakeCode.
 
-* open [https://minecraft.makecode.com/](https://minecraft.makecode.com/)
+* open [https://minecraft.makecode.com/?github=1](https://minecraft.makecode.com/?github=1)
 * click on **Import** then click on **Import URL**
 * paste **https://github.com/dsandy12/pxt-motocart** and click import
 

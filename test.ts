@@ -1,1 +1,11 @@
-// tests go here; this will not be compiled when this package is used as an extension.
+motocart.isSidewalkRight();
+motocart.isSidewalkAhead();
+motocart.isAtStop ();
+motocart.canRightTurn ();
+motocart.canLeftTurn ();
+motocart.canGoStraight (1);
+motocart.summonCart();
+motocart.move(1);
+motocart.rotate(0);
+motocart.position();
+motocart.heading();

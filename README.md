@@ -23,6 +23,12 @@ To edit this repository in MakeCode.
 This image shows the blocks code from the last commit in master.
 This image may take a few minutes to refresh.
 
+```blocks
+    for (let i=0;i<10;++i) {
+        player.say(":)");
+    }
+```
+
 ![A rendered view of the blocks](https://github.com/dsandy12/pxt-motocart/raw/master/.github/makecode/blocks.png)
 
 #### Metadata (used for search, rendering)

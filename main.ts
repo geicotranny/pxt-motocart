@@ -4,6 +4,7 @@
 //% weight=100 color=#EB0DD5 icon=""
 namespace motocart {
     const MOVE_STEP = .2;
+    let isClassroom = checkForClassroomMarker();
     let map_tile = [
 		["XXXXXXXXXX","XXXXXXXXXX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX"],
 		["XXXXXXXXXX","XXXXXXXXXX","________XX","________XX","________XX","________XX","________XX","________XX","XXXXXXXXXX","XXXXXXXXXX"],
@@ -50,10 +51,16 @@ namespace motocart {
     let swWorldRtZ = false;
     let swWorldLtX = false;
     let swWorldLtZ = false;
-    let isClassroom = true;
     player.say("Ready to Roll!");
 	
-    //% block
+    function checkForClassroomMarker():boolean {
+        let sel = mobs.target(ALL_ENTITIES)
+        sel.addRule("type", "armor_stand")
+        sel.addRule("name", "classroom1_marker")
+        let qta = mobs.queryTarget(sel);
+        return (qta.length!=0);
+    }
+
     function getMazeElevation(x:number,z:number):number {
         // convert coordinates to block coordinates
         let xi = Math.floor(x);
@@ -85,7 +92,6 @@ namespace motocart {
         }
     }
     
-    //% block
     function getMazeBlock(x:number, z:number):string {
         // convert coordinates to block coordinates
         let xi = Math.floor(x);

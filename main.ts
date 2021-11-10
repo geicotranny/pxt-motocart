@@ -62,11 +62,11 @@ namespace motocart {
     }
 
     function getMazeElevation(x:number,z:number):number {
-        // convert coordinates to block coordinates
-        let xi = Math.floor(x);
-        let zi = Math.floor(120+z)
-
         if (isClassroom) {
+            // convert coordinates to block coordinates
+            let xi = Math.floor(x);
+            let zi = Math.floor(120+z)
+
             // range check to see if the point is on the map
             if (xi<0) return 0;
             if (xi>120) return 0;
@@ -88,16 +88,20 @@ namespace motocart {
             // otherwise, return the base elevation for the current tile
             return mapData[zd][xd].e;
         } else {
+            // convert coordinates to block coordinates
+            let xi = Math.floor(x);
+            let zi = Math.floor(z)
+
             return positions.groundPosition(world(xi,ypos+2,zi)).getValue(Axis.Y);
         }
     }
     
-    function getMazeBlock(x:number, z:number):string {
-        // convert coordinates to block coordinates
-        let xi = Math.floor(x);
-        let zi = Math.floor(120+z)
-
+    function getMazeBlock(x:number, y:number, z:number):string {
         if (isClassroom) {
+            // convert coordinates to block coordinates
+            let xi = Math.floor(x);
+            let zi = Math.floor(120+z)
+
             // range check to see if the point is on the map
             if (xi<0) return 'X';
             if (xi>120) return 'X';
@@ -130,17 +134,27 @@ namespace motocart {
             }
             return blk;
         } else {
+            // convert coordinates to block coordinates
+            let xi = Math.floor(x);
+            let zi = Math.floor(z)
+
             // get the elevation of the block in question
-            let yi = getMazeElevation(xi,zi);
+            let yi = Math.floor(y);
 
             // there is no way to get the block type from the minecraft API.
             // instead, individual checks must be made.
             let blockpos = world(xi,yi,zi);
-            if (blocks.testForBlock(STONE_BRICKS_SLAB, blockpos)) return "X";
-            if (blocks.testForBlock(WHITE_CONCRETE, blockpos)) return "1";
-            if (blocks.testForBlock(WHITE_CONCRETE_POWDER, blockpos)) return "2";
-            if (blocks.testForBlock(BLOCK_OF_QUARTZ, blockpos)) return "3";
-            if (blocks.testForBlock(WOOL, blockpos)) return "4";
+
+            // optimization - only check for stops when looking under cart
+            if (yi == Math.floor(ypos)) {
+                if (blocks.testForBlock(STONE_BRICKS_SLAB, blockpos)) return "X";
+                if (blocks.testForBlock(STONE_BRICKS, blockpos)) return "X";
+            } else {
+                if (blocks.testForBlock(WHITE_CONCRETE_POWDER, blockpos)) return "1";
+                if (blocks.testForBlock(WOOL, blockpos)) return "2";
+                if (blocks.testForBlock(WHITE_CONCRETE, blockpos)) return "3";
+                if (blocks.testForBlock(BLOCK_OF_QUARTZ, blockpos)) return "4";
+            }
             return "_";
         }
     }
@@ -194,6 +208,7 @@ namespace motocart {
         let sel = mobs.target(ALL_ENTITIES)
         sel.addRule("type", "minecart")
         sel.addRule("tag", player.name())
+        sel.withinRadius(2048);
         let qta:QueryTargetResult[] = mobs.queryTarget(sel);
         if (qta.length!=0) {
             // cart exists, teleport it to the starting location
@@ -209,6 +224,7 @@ namespace motocart {
         sel = mobs.target(ALL_ENTITIES)
         sel.addRule("type", "villager")
         sel.addRule("tag", player.name())
+        sel.withinRadius(2048);
         qta = mobs.queryTarget(sel);
         if (qta.length!=0) {
             // the villager exists - just make it ride the cart
@@ -233,7 +249,7 @@ namespace motocart {
     //% block
     export function isSidewalkRight():boolean {
         let p = rotatePoint(pos(0,0,1), dir)
-        return getMazeBlock(Math.floor(xpos+p.getValue(Axis.X)),Math.floor(zpos+p.getValue(Axis.Z)))=="X";
+        return getMazeBlock(xpos+p.getValue(Axis.X),ypos,zpos+p.getValue(Axis.Z))=="X";
     }
 
     /**
@@ -244,7 +260,7 @@ namespace motocart {
     //% block
     export function isSidewalkAhead():boolean {
         let p = rotatePoint(pos(1,0,0), dir)
-        return getMazeBlock(Math.floor(xpos+p.getValue(Axis.X)),Math.floor(zpos+p.getValue(Axis.Z)))=="X";
+        return getMazeBlock(xpos+p.getValue(Axis.X),ypos,zpos+p.getValue(Axis.Z))=="X";
     }
 
     /**
@@ -255,7 +271,7 @@ namespace motocart {
      */
     //% block
     export function isAtStop (): boolean {
-        return getMazeBlock(Math.floor(xpos),Math.floor(zpos))!='_';
+        return getMazeBlock(xpos,ypos-1,zpos)!='_';
     }
 
     /**
@@ -266,7 +282,7 @@ namespace motocart {
      */
     //% block
     export function canRightTurn (): boolean {
-        let b = getMazeBlock(Math.floor(xpos),Math.floor(zpos));
+        let b = getMazeBlock(xpos,ypos-1,zpos);
         return ((b=='2')||(b=='3')||(b=='4'));
     }
 
@@ -278,7 +294,7 @@ namespace motocart {
      */
     //% block
     export function canLeftTurn (): boolean {
-        let b = getMazeBlock(Math.floor(xpos),Math.floor(zpos));
+        let b = getMazeBlock(xpos,ypos-1,zpos);
         return ((b=='1')||(b=='3')||(b=='4'));
     }
 
@@ -289,8 +305,8 @@ namespace motocart {
      * @return true if straight through is allowed, otherwise false
      */
     //% block
-    export function canGoStraight (distance:number): boolean {
-        let b = getMazeBlock(Math.floor(xpos),Math.floor(zpos));
+    export function canGoStraight (): boolean {
+        let b = getMazeBlock(xpos,ypos-1,zpos);
         return ((b=='1')||(b=='2')||(b=='3'));
     }
 
@@ -360,7 +376,7 @@ namespace motocart {
                 if (worldRtX==worldRtZ) {
                     swWorldRtX = swWorldRtZ;
                 } else {
-                    swWorldRtX = (getMazeBlock(worldRtX.getValue(Axis.X),worldRtX.getValue(Axis.Z))=="X");    
+                    swWorldRtX = (getMazeBlock(worldRtX.getValue(Axis.X),ypos,worldRtX.getValue(Axis.Z))=="X");    
                 }
             }
             if (newRtZ!=worldRtZ) {
@@ -368,7 +384,7 @@ namespace motocart {
                 if (worldRtZ==worldRtX) {
                     swWorldRtZ = swWorldRtX;
                 } else {
-                    swWorldRtZ = (getMazeBlock(worldRtZ.getValue(Axis.X),worldRtZ.getValue(Axis.Z))=="X");    
+                    swWorldRtZ = (getMazeBlock(worldRtZ.getValue(Axis.X),ypos,worldRtZ.getValue(Axis.Z))=="X");    
                 }
             }
             if (newLtX!=worldLtX) {
@@ -376,7 +392,7 @@ namespace motocart {
                 if (worldLtX==worldLtZ) {
                     swWorldLtX = swWorldLtZ;
                 } else {
-                    swWorldLtX = (getMazeBlock(worldLtX.getValue(Axis.X),worldLtX.getValue(Axis.Z))=="X");    
+                    swWorldLtX = (getMazeBlock(worldLtX.getValue(Axis.X),ypos,worldLtX.getValue(Axis.Z))=="X");    
                 }
             }
             if (newLtZ!=worldLtZ) {
@@ -384,7 +400,7 @@ namespace motocart {
                 if (worldLtZ==worldLtX) {
                     swWorldLtZ = swWorldLtX;
                 } else {
-                    swWorldLtZ = (getMazeBlock(worldLtZ.getValue(Axis.X),worldLtZ.getValue(Axis.Z))=="X");    
+                    swWorldLtZ = (getMazeBlock(worldLtZ.getValue(Axis.X),ypos,worldLtZ.getValue(Axis.Z))=="X");    
                 }
             }
 
@@ -455,4 +471,3 @@ namespace motocart {
         return dir;
     }
 }
-

@@ -250,7 +250,9 @@ namespace motocart {
         player.execute("title @s actionbar "+systemMessage);
     });
 	
-    // function to determine if the cart has reached its destination
+    /**
+     * Determine if the cart has reached its destination
+     */
     //% block
     export function reachedDestination():boolean {
         if (destination<0) return false;
@@ -533,8 +535,7 @@ namespace motocart {
     }
 
     /** 
-     * detect whether there is a sidewalk to the right of the player and some distance ahead.  The distance must be no more than 3
-     * @param distanceAhead 0 for immediately next to the player, 1 for one ahead, etc eg: 0
+     * detect whether there is a sidewalk to the right of the minecart.
      * @return true if there is a sidewalk, otherwise, false
      */
     //% block
@@ -544,8 +545,7 @@ namespace motocart {
     }
 
     /**
-     * detect whether there is a sidewalk in front of the player at some distance ahead.  The distance must be no more than 3
-     * @param distanceAhead 1 for immediately in front of the player, 2 for twi ahead, etc eg: 1
+     * detect whether there is a sidewalk in front of the minecart.
      * @return true if there is a sidewalk, otherwise, false
      */
     //% block

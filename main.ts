@@ -1,10 +1,20 @@
 /**
+ * TODO:
+ * Minecart summon does not bring passenger
+ * Minecart stops at pickup location
+ * Pickup requires pickup command
+ * Dropoff requires dropoff command
+ * Add function for detecting passenger
+ * Add function for detecting destination
+ */
+/**
  * Custom blocks
  */
 //% weight=100 color=#EB0DD5 icon=""
 namespace motocart {
     const MOVE_STEP = .2;
     let isClassroom = checkForClassroomMarker();
+    let initialized = false;
     let map_tile = [
 		["XXXXXXXXXX","XXXXXXXXXX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX"],
 		["XXXXXXXXXX","XXXXXXXXXX","________XX","________XX","________XX","________XX","________XX","________XX","XXXXXXXXXX","XXXXXXXXXX"],
@@ -35,7 +45,171 @@ namespace motocart {
         [{e:65,t:3,s:0},{e:65,t:8,s:0},{e:65,t:10,s:0},{e:65,t:13,s:0},{e:65,t:5,s:0},{e:0,t:-1,s:0},{e:65,t:12,s:0},{e:0,t:-1,s:0},{e:0,t:-1,s:0},{e:65,t:12,s:0},{e:0,t:-1,s:0},{e:65,t:2,s:0}],
         [{e:0,t:-1,s:0},{e:65,t:2,s:0},{e:0,t:-1,s:0},{e:0,t:-1,s:0},{e:65,t:2,s:0},{e:0,t:-1,s:0},{e:65,t:7,s:0},{e:65,t:13,s:0},{e:65,t:13,s:0},{e:65,t:6,s:0},{e:0,t:-1,s:0},{e:0,t:-1,s:0}]
     ]
-    let initialized = false;
+    // first index = the stop sign traveling from
+    // second index = the stop sign traveling to
+    // value 1 = turn left, 2 = turn right, 3 = go straight
+    let gpsData = [
+        [3,	3,	3,	3,	1,	3,	1,	3,	3,	1,	3,	3,	1,	3,	3,	3,	3,	1,	1,	3,	3,	3,	3,	3,	3,	3,	3,	1,	1,	3,	1,	1,	1,	3,	1,	3,	3,	1,	1,	1,	1,	3,	1,	1,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	3,	1],
+        [1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1],
+        [3,	3,	3,	3,	3,	3,	2,	3,	3,	2,	3,	3,	2,	3,	3,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	2,	2,	2,	3,	2,	3,	3,	2,	3,	2,	2,	3,	2,	2,	3,	3,	3,	2,	2,	2,	2,	2,	2,	3,	3,	3,	3,	3,	3,	3,	2,	2,	2,	2,	2,	2,	3,	3,	3,	2],
+        [1,	2,	1,	1,	2,	2,	1,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	1,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2],
+        [2,	2,	1,	2,	2,	2,	1,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	1,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2],
+        [1,	3,	1,	1,	3,	3,	1,	3,	3,	1,	3,	3,	1,	3,	3,	3,	3,	1,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	1,	1,	1,	3,	3,	3,	3,	1,	3,	1,	3,	3,	3,	3,	3,	3,	3,	1,	1,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3],
+        [1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	2,	1,	1,	1,	1,	1,	2,	2,	1,	1,	1,	1,	1,	1,	1,	2,	2,	2,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	2,	2,	2,	2,	2,	2,	1,	1,	1,	1],
+        [3,	1,	3,	3,	3,	3,	3,	3,	1,	3,	1,	1,	3,	1,	1,	3,	1,	3,	3,	3,	1,	3,	1,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	1,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	1,	3],
+        [2,	1,	2,	2,	2,	2,	2,	2,	1,	2,	2,	1,	2,	1,	1,	1,	1,	2,	2,	2,	1,	1,	1,	1,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	1,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	1,	2],
+        [3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3],
+        [2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	1,	1,	2,	1,	1,	2,	1,	2,	1,	1,	1,	1,	1,	2,	1,	1,	2,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	2,	2,	1],
+        [3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	1,	1,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	1,	1,	3,	1,	1,	1,	1,	1,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	1,	1],
+        [3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3],
+        [1,	1,	1,	1,	3,	1,	1,	1,	1,	1,	1,	3,	3,	1,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	1,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	1,	3,	3],
+        [2,	3,	2,	2,	2,	2,	2,	2,	3,	2,	3,	3,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	3,	2,	2],
+        [3,	2,	3,	3,	3,	3,	3,	3,	2,	3,	2,	2,	3,	2,	2,	2,	2,	3,	3,	3,	2,	2,	2,	2,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	2,	2,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	2,	2,	3],
+        [1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1],
+        [1,	1,	1,	1,	1,	1,	3,	1,	1,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1],
+        [3,	3,	3,	3,	3,	2,	2,	3,	3,	3,	3,	3,	2,	3,	3,	2,	2,	3,	2,	3,	3,	2,	3,	3,	2,	2,	2,	2,	2,	3,	2,	3,	2,	2,	2,	3,	3,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	3,	3,	3,	2],
+        [2,	2,	2,	2,	2,	2,	1,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	1,	2,	2,	2,	2,	1,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	1,	1,	1,	2,	2,	2,	2],
+        [2,	1,	2,	2,	2,	2,	2,	2,	1,	2,	1,	1,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2],
+        [2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	1,	2,	1,	1,	2,	1,	2,	2,	1,	1,	1,	1,	2,	1,	1,	2,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	2,	2,	1],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	1,	1,	1,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1],
+        [3,	2,	3,	3,	3,	3,	3,	3,	2,	3,	2,	2,	3,	2,	2,	3,	2,	3,	3,	3,	2,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	2,	2,	2,	3,	3,	3,	3,	2,	3,	2,	2,	2,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2],
+        [3,	1,	3,	3,	3,	3,	3,	3,	1,	3,	1,	1,	3,	1,	1,	3,	1,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3],
+        [1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	2,	2,	2,	2,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	2,	2,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1],
+        [1,	2,	1,	1,	1,	1,	1,	1,	2,	1,	2,	2,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	2,	2,	1,	2,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	2,	2,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1],
+        [3,	3,	2,	2,	2,	3,	2,	2,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	2,	2,	3,	3,	3,	2,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	2,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3],
+        [1,	1,	2,	2,	2,	1,	2,	2,	1,	2,	1,	1,	2,	1,	1,	1,	1,	1,	2,	2,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	2,	2,	2,	1,	2,	2,	2,	2,	1,	2,	2,	1,	2,	2,	1,	1,	1,	2,	2,	2,	2,	2,	2,	1,	1,	1,	1,	1,	1,	1,	2,	2,	2,	2,	2,	2,	1,	1,	1,	2],
+        [3,	3,	3,	3,	3,	1,	3,	3,	3,	1,	3,	3,	3,	3,	3,	1,	1,	3,	3,	1,	3,	1,	3,	1,	1,	1,	1,	1,	3,	3,	3,	3,	1,	1,	1,	1,	3,	3,	1,	1,	3,	1,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	3,	1],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	2,	2,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	2,	2,	2,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	2,	2,	2,	2,	2,	2,	3,	3,	3,	3],
+        [1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	2,	1,	1,	2,	2,	1,	2,	1,	1,	2,	1,	2,	2,	2,	2,	2,	1,	1,	1,	1,	2,	2,	2,	1,	1,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	2],
+        [1,	1,	1,	2,	2,	1,	2,	1,	1,	2,	1,	1,	2,	1,	1,	1,	1,	1,	2,	2,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	2,	2,	2,	1,	2,	2,	1,	2,	2,	2,	1,	2,	2,	2,	2,	2,	1,	2,	2,	2,	1,	2,	2,	2,	1,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	2],
+        [2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	1,	1,	3,	1,	3,	3,	3,	1,	3,	3,	1,	1,	1,	1,	3,	1,	1,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	3,	1],
+        [3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	1,	3,	3,	3,	3,	1,	3,	3,	1,	1,	1,	1,	3,	3,	3,	3,	1,	3,	1,	3,	3,	1,	3,	3,	1,	3,	1,	1,	3,	3,	1,	1,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	3,	1],
+        [3,	3,	3,	2,	2,	3,	2,	3,	3,	2,	3,	3,	2,	3,	3,	3,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	2,	2,	3,	3,	2,	2,	3,	2,	3,	3,	2,	3,	3,	2,	3,	2,	2,	3,	3,	2,	2,	2,	2,	2,	2,	2,	2,	3,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	3,	3,	3,	2],
+        [2,	2,	1,	1,	1,	2,	1,	1,	2,	1,	2,	2,	1,	2,	2,	2,	2,	2,	1,	1,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	1,	1,	2,	2,	2,	1,	2,	1,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	1,	1,	1,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	1,	1,	1,	2,	2,	2,	1],
+        [1,	1,	2,	2,	2,	1,	2,	2,	1,	2,	1,	1,	2,	1,	1,	1,	1,	2,	2,	2,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	2,	2,	1,	2,	1,	1,	2,	1,	1,	2,	1,	1,	2,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1],
+        [1,	1,	2,	2,	2,	1,	2,	2,	1,	2,	1,	1,	2,	1,	1,	1,	1,	1,	2,	2,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	2,	2,	2,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	2,	2,	2,	2,	2,	2,	1,	1,	1,	1],
+        [2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	1,	2,	1,	1,	1,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	1,	1],
+        [2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	3,	2,	2,	3,	2,	2,	2,	2,	3,	2,	2,	3,	3,	2,	2,	2,	2,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	2,	2,	3],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	1,	1,	1,	1,	1,	1,	3,	3,	3,	3],
+        [2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	3,	2,	3,	2,	2,	3,	2,	2,	3,	2,	3,	3,	2,	2,	2,	3,	3,	3,	3,	3,	3,	2,	2,	2,	2,	2,	2,	2,	3,	3,	3,	3,	3,	3,	2,	2,	2,	3],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	1,	1,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1],
+        [2,	2,	2,	3,	3,	2,	3,	2,	2,	3,	2,	2,	3,	2,	2,	2,	2,	2,	3,	3,	2,	2,	2,	2,	2,	2,	2,	3,	2,	2,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	2,	2,	2],
+        [3,	3,	1,	1,	1,	3,	1,	1,	3,	1,	3,	3,	1,	3,	3,	3,	3,	1,	1,	1,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	1,	1,	3,	1,	3,	3,	1,	3,	3,	1,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	2,	3,	3,	2,	3,	3,	3,	3,	2,	3,	3,	3,	3,	2,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	2,	2,	2,	2,	2,	2,	3,	3,	3,	3],
+        [1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	1,	1,	1,	3,	3,	1,	3,	1,	3,	3,	3,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3],
+        [1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	1,	1,	1,	1,	3,	1,	3,	1,	1,	1,	3,	1,	1,	1,	3,	3,	3,	1,	3,	3,	3,	3,	1,	3,	3,	3,	1,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	1,	1,	1,	1],
+        [2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	1,	2,	1,	2,	2,	1,	2,	2,	1,	2,	1,	1,	2,	2,	2,	1,	1,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	1,	1,	1,	2,	2,	2,	2],
+        [2,	2,	1,	1,	1,	2,	1,	1,	2,	1,	2,	2,	1,	2,	2,	2,	2,	2,	1,	1,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	1,	1,	1,	2,	1,	2,	2,	2,	2,	2,	1,	2,	1,	1,	1,	1,	1,	1,	2,	2,	2,	2],
+        [2,	3,	2,	2,	2,	2,	2,	2,	3,	2,	3,	3,	2,	2,	2,	2,	3,	2,	2,	2,	2,	2,	3,	3,	2,	3,	2,	3,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	3,	2,	2,	2,	2,	2,	2,	2,	3,	3,	2],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	1,	3,	3,	1,	1,	3,	1,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3],
+        [3,	3,	2,	2,	2,	3,	2,	2,	3,	2,	3,	3,	2,	3,	3,	3,	3,	3,	2,	2,	3,	3,	3,	3,	2,	3,	2,	3,	2,	3,	2,	2,	2,	2,	2,	2,	3,	2,	2,	2,	2,	2,	2,	2,	2,	3,	3,	2,	2,	2,	2,	2,	2,	2,	3,	3,	2,	3,	3,	3,	2,	2,	2,	2,	2,	2,	3,	3,	3,	2],
+        [1,	1,	1,	2,	2,	1,	2,	1,	1,	2,	1,	1,	2,	1,	1,	1,	1,	1,	2,	2,	1,	1,	1,	1,	2,	1,	2,	1,	1,	1,	2,	2,	2,	1,	2,	2,	1,	2,	2,	2,	1,	1,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	1,	1,	2],
+        [1,	2,	1,	1,	1,	1,	1,	1,	2,	1,	2,	2,	1,	1,	1,	1,	2,	1,	1,	1,	1,	1,	2,	2,	1,	2,	1,	2,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	2,	1,	2,	1,	2,	1,	2,	1,	2,	1,	1,	1,	1,	1,	1,	1,	2,	2,	1],
+        [3,	3,	3,	1,	1,	3,	1,	3,	3,	1,	3,	3,	1,	3,	3,	3,	3,	3,	1,	1,	3,	3,	3,	3,	1,	3,	1,	3,	3,	3,	1,	1,	1,	3,	1,	1,	3,	1,	1,	1,	3,	3,	1,	1,	1,	1,	1,	1,	1,	1,	3,	1,	1,	1,	3,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	3,	1],
+        [2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	2,	2,	2,	2,	2,	2],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	1,	3,	3,	3,	3],
+        [2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	3,	3,	3,	3,	3,	2,	2,	2,	2],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	2,	3,	3,	3,	3],
+        [1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	1,	3,	3,	3,	3,	3,	1,	1,	1,	1],
+        [2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	2,	1,	2,	1,	2,	2,	2,	2],
+        [2,	3,	2,	2,	3,	3,	2,	3,	3,	2,	3,	3,	2,	3,	3,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	2,	2,	3,	3,	3,	3,	3,	2,	3,	2,	3,	3,	3,	3,	3,	3,	3,	3,	2,	2,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	2,	3,	3,	3],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3],
+        [3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3,	3]
+    ]
+    let stopData = [
+        {xpos:48, zpos:-108, l:17, r:-2, s:2},
+        {xpos:88, zpos:-108, l:8, r:67, s:-2},
+        {xpos:41, zpos:-103, l:-2, r:17, s:3},
+        {xpos:61, zpos:-103, l:66, r:7, s:-2},
+        {xpos:47, zpos:-102, l:2, r:3, s:-2},
+        {xpos:67, zpos:-102, l:0, r:-2, s:66},
+        {xpos:12, zpos:-99, l:18, r:31, s:-2},
+        {xpos:62, zpos:-99, l:13, r:-2, s:29},
+        {xpos:82, zpos:-99, l:13, r:10, s:-2},
+        {xpos:18, zpos:-98, l:-2, r:6, s:31},
+        {xpos:68, zpos:-98, l:29, r:5, s:-2},
+        {xpos:108, zpos:-98, l:20, r:-2, s:1},
+        {xpos:11, zpos:-93, l:6, r:-2, s:18},
+        {xpos:91, zpos:-93, l:1, r:-2, s:14},
+        {xpos:101, zpos:-93, l:-2, r:20, s:11},
+        {xpos:67, zpos:-92, l:-2, r:13, s:5},
+        {xpos:107, zpos:-92, l:1, r:11, s:-2},
+        {xpos:38, zpos:-88, l:28, r:-2, s:9},
+        {xpos:31, zpos:-83, l:-2, r:28, s:4},
+        {xpos:37, zpos:-82, l:9, r:4, s:-2},
+        {xpos:102, zpos:-79, l:23, r:22, s:-2},
+        {xpos:68, zpos:-78, l:29, r:15, s:-2},
+        {xpos:98, zpos:-78, l:54, r:-2, s:68},
+        {xpos:108, zpos:-78, l:-2, r:16, s:22},
+        {xpos:91, zpos:-73, l:-2, r:54, s:25},
+        {xpos:101, zpos:-73, l:16, r:-2, s:23},
+        {xpos:77, zpos:-72, l:21, r:24, s:-2},
+        {xpos:97, zpos:-72, l:68, r:25, s:-2},
+        {xpos:32, zpos:-69, l:-2, r:30, s:37},
+        {xpos:62, zpos:-69, l:33, r:36, s:-2},
+        {xpos:18, zpos:-68, l:39, r:-2, s:12},
+        {xpos:11, zpos:-63, l:-2, r:39, s:32},
+        {xpos:31, zpos:-63, l:19, r:37, s:-2},
+        {xpos:71, zpos:-63, l:26, r:41, s:-2},
+        {xpos:17, zpos:-62, l:12, r:32, s:-2},
+        {xpos:37, zpos:-62, l:30, r:-2, s:19},
+        {xpos:48, zpos:-58, l:40, r:-2, s:35},
+        {xpos:41, zpos:-53, l:-2, r:40, s:33},
+        {xpos:47, zpos:-52, l:35, r:33, s:-2},
+        {xpos:12, zpos:-39, l:48, r:47, s:-2},
+        {xpos:42, zpos:-39, l:50, r:43, s:-2},
+        {xpos:72, zpos:-39, l:56, r:45, s:-2},
+        {xpos:18, zpos:-38, l:-2, r:34, s:47},
+        {xpos:28, zpos:-38, l:60, r:-2, s:42},
+        {xpos:48, zpos:-38, l:-2, r:38, s:43},
+        {xpos:68, zpos:-38, l:58, r:-2, s:44},
+        {xpos:78, zpos:-38, l:-2, r:69, s:45},
+        {xpos:11, zpos:-33, l:34, r:-2, s:48},
+        {xpos:21, zpos:-33, l:-2, r:60, s:49},
+        {xpos:41, zpos:-33, l:38, r:-2, s:50},
+        {xpos:61, zpos:-33, l:-2, r:58, s:51},
+        {xpos:71, zpos:-33, l:69, r:-2, s:56},
+        {xpos:27, zpos:-32, l:42, r:49, s:-2},
+        {xpos:67, zpos:-32, l:44, r:51, s:-2},
+        {xpos:112, zpos:-29, l:-2, r:55, s:59},
+        {xpos:98, zpos:-28, l:53, r:-2, s:46},
+        {xpos:91, zpos:-23, l:-2, r:53, s:57},
+        {xpos:111, zpos:-23, l:27, r:59, s:-2},
+        {xpos:97, zpos:-22, l:46, r:57, s:-2},
+        {xpos:117, zpos:-22, l:55, r:-2, s:27},
+        {xpos:22, zpos:-19, l:62, r:61, s:-2},
+        {xpos:18, zpos:-18, l:65, r:-2, s:63},
+        {xpos:28, zpos:-18, l:-2, r:52, s:61},
+        {xpos:11, zpos:-13, l:-2, r:65, s:64},
+        {xpos:21, zpos:-13, l:52, r:-2, s:62},
+        {xpos:17, zpos:-12, l:63, r:64, s:-2},
+        {xpos:62, zpos:-109, l:-2, r:0, s:7},
+        {xpos:82, zpos:-109, l:-2, r:-2, s:8},
+        {xpos:78, zpos:-78, l:-2, r:-2, s:21},
+        {xpos:77, zpos:-62, l:-2, r:-2, s:26}
+    ];
+    let destinations = [
+        {xpos:2, zpos:-116, stop:6, name:"10 Factory Row"},
+        {xpos:34, zpos:-118, stop:2, name:"45 Vista Lane"},
+        {xpos:64, zpos:-118, stop:66, name:"35 Hillside Drive"},
+        {xpos:84, zpos:-118, stop:67, name:"55 High Street"},
+        {xpos:27, zpos:-95, stop:9, name:"150 Industrial Parkway"},
+        {xpos:7, zpos:-82, stop:12, name:"85 Commerce Way"},
+        {xpos:85, zpos:-78, stop:68, name:"100 Main Street"},
+        {xpos:117, zpos:-76, stop:23, name:"200 Riverside Drive"},
+        {xpos:32, zpos:-56, stop:37, name:"55 Century Avenue"},
+        {xpos:77, zpos:-56, stop:69, name:"25 Market Place"},
+        {xpos:2, zpos:-36, stop:47, name:"75 Pine Drive"},
+        {xpos:79, zpos:-8, stop:53, name:"35 Spruce Street"},
+        {xpos:114, zpos:-13, stop:59, name:"1 Park Street"},
+        {xpos:14, zpos:-3, stop:65, name:"45 Elm Drive"},
+        {xpos:44, zpos:-3, stop:62, name:"65 Maple Way"},
+        {xpos:114, zpos:-118, stop:11, name:"60 Ridgeline Street"}
+    ];
     let xpos:number = 0;
     let ypos:number = 0;
     let zpos:number = 0;
@@ -51,8 +225,98 @@ namespace motocart {
     let swWorldRtZ = false;
     let swWorldLtX = false;
     let swWorldLtZ = false;
-    player.say("Ready to Roll!");
+
+    let gps_enabled = true;
+    let gps_count  = 0;
+    let battery_count = 0;
+    let solar_count = 0;
+    let power_count = 0;
+    let noteblock_count = 0;
+    let regen_count = 0;
+    let speed_count = 0;
+    let efficiency_count = 0;
+    let accuracy_count = 0;
+    let position_count = 0;
+    let heading_count = 0;
+    let ac_count = 0;
+    let ergonomics_count = 0;
+
+    let has_passenger=false;
+    let destination=-1;
+    
+    let systemMessage = "Ready to Roll"
+    // by default, this runs once a second
+    loops.forever(function() {
+        player.execute("title @s actionbar "+systemMessage);
+    });
 	
+    // function to determine if the cart has reached its destination
+    //% block
+    export function reachedDestination():boolean {
+        if (destination<0) return false;
+        if ((Math.floor(xpos)==destinations[destination].xpos)&&(Math.floor(zpos)==destinations[destination].zpos)) return true;
+        return false;
+    }
+
+    // attempt to stop the minecart - this function is asynchronous
+    player.onTellCommand("stop", function() {
+        initialized = false;
+        systemMessage = "";
+    })
+
+    // call the cart to the starting position
+    player.onTellCommand("call", function () {
+        motocart.summonCart();
+    })
+
+    function checkScoreboard(comparison:string):boolean {
+        let sel = mobs.target(ALL_ENTITIES);
+        sel.addRule("type", "player");
+        sel.addRule("name", player.name());
+        sel.addRule("scores","{"+comparison+"}")
+        let qta = mobs.queryTarget(sel);
+        return (qta.length!=0);
+    }
+
+    /** 
+     * helper function to set minecart parameters based on world scoreboards.
+     */
+    function initMinecart():void {
+        systemMessage = "Initializing Cart"
+
+        // add player to scoreboards if not already there.
+        player.execute("scoreboard players add @s road_tests 0")
+        player.execute("scoreboard players add @s upgrade_count 0")
+        player.execute("scoreboard players add @s gps_enabled 0")
+        player.execute("scoreboard players add @s gps_count 0")
+        player.execute("scoreboard players add @s battery_count 0")
+        player.execute("scoreboard players add @s solar_count 0")
+        player.execute("scoreboard players add @s power_count 0")
+        player.execute("scoreboard players add @s noteblock_count 0")
+        player.execute("scoreboard players add @s regen_count 0")
+        player.execute("scoreboard players add @s speed_count 0")
+        player.execute("scoreboard players add @s efficiency_count 0")
+        player.execute("scoreboard players add @s accuracy_count 0")
+        player.execute("scoreboard players add @s position_count 0")
+        player.execute("scoreboard players add @s heading_count 0")
+        player.execute("scoreboard players add @s ac_count 0")
+        player.execute("scoreboard players add @s ergonomics_count 0")
+
+        if (checkScoreboard("gps_count=1")) gps_count = 1;
+        for (let i=1;i<=5;i++) {if (checkScoreboard("battery_count="+i)) battery_count=i;}
+        for (let i=1;i<=5;i++) {if (checkScoreboard("solar_count="+i)) solar_count=i;}
+        for (let i=1;i<=5;i++) {if (checkScoreboard("regen_count="+i)) regen_count=i;}
+        for (let i=1;i<=5;i++) {if (checkScoreboard("power_count="+i)) power_count=i;}
+        for (let i=1;i<=5;i++) {if (checkScoreboard("speed_count="+i)) speed_count=i;}
+        for (let i=1;i<=5;i++) {if (checkScoreboard("efficiency_count="+i)) efficiency_count=i;}
+        for (let i=1;i<=5;i++) {if (checkScoreboard("accuracy_count="+i)) accuracy_count=i;}
+        for (let i=1;i<=1;i++) {if (checkScoreboard("position_count="+i)) position_count=i;}
+        for (let i=1;i<=1;i++) {if (checkScoreboard("heading_count="+i)) heading_count=i;}
+        for (let i=1;i<=5;i++) {if (checkScoreboard("noteblock_count="+i)) noteblock_count=i;}
+        for (let i=1;i<=1;i++) {if (checkScoreboard("ac_count="+i)) ac_count=i;}
+        for (let i=1;i<=5;i++) {if (checkScoreboard("ergonomics_count="+i)) ergonomics_count=i;}
+    }
+
     function checkForClassroomMarker():boolean {
         let sel = mobs.target(ALL_ENTITIES)
         sel.addRule("type", "armor_stand")
@@ -198,6 +462,9 @@ namespace motocart {
     // @param startHeading - the starting orientation of the cart
     // @param passengerName - the name of the passenger to use
     function create(startPosition:Position, startHeading:number,passengerName:string):boolean {
+        initMinecart();
+        systemMessage = "";
+
         // set the initial position and heading
         xpos = startPosition.getValue(Axis.X)+.5;
         ypos = startPosition.getValue(Axis.Y);
@@ -221,24 +488,48 @@ namespace motocart {
             player.execute("/tag @e[type=minecart,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
         }
 
-        sel = mobs.target(ALL_ENTITIES)
-        sel.addRule("type", "villager")
-        sel.addRule("tag", player.name())
-        sel.withinRadius(2048);
-        qta = mobs.queryTarget(sel);
-        if (qta.length!=0) {
-            // the villager exists - just make it ride the cart
-            player.execute("/ride @e[type=villager,tag="+ player.name()+"] start_riding @e[type=minecart,tag=" + player.name() + "]");
-        } else {
-            // summon a passenger to ride the minecart
-            player.execute("/ride @e[type=minecart,tag=" + player.name() + "] summon_rider villager \"\" \"" + passengerName+"\"");
-
-            // tag the passenger to make it unique
-            player.execute("/tag @e[type=villager,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
-        }
-        initialized = true;
+       initialized = true;
+       has_passenger = false;
+       destination = -1;
        rotate(startHeading);
        return true;
+    }
+
+    /** 
+     * Get the gps direction to use for the current destination.  A value of 1
+     * indicates a left turn.  A value of 2 indicates a right turn.  All other
+     * values indicate straight.
+     */
+    //% block
+    export function getGpsDirection():number {
+        if (destination<0) return 0
+        let currentX = Math.floor(xpos);
+        let currentZ = Math.floor(zpos);
+
+        for (let idx = 0; idx<stopData.length; idx++) {
+            if ((stopData[idx].xpos==currentX)&&(stopData[idx].zpos==currentZ)) {
+                // here if the cart is at a known stop position - the index corresponds with
+                // a start position in the gps table.
+                return gpsData[idx][destinations[destination].stop];
+            }
+        }
+        // here if the cart is not at a stop - just go straight
+        return 3;
+    }
+
+    /**
+     * returns a numeric code related to the current destiation of the cart.  For this function to 
+     * return a valid destination, GPS must be enabled and the cart must be equiped with GPS.  If these
+     * conditions are not met, then -1 is returned.
+     */
+    //% block
+    export function getDestinationCode():number {
+        if ((gps_count == 0)||(!gps_enabled)||(!initialized)) return -1;
+        if (destination<0) {
+            destination = Math.floor(Math.random()*destinations.length);
+            systemMessage = "Pick up passenger at "+destinations[destination].name;
+         }
+        return destination;
     }
 
     /** 
@@ -308,6 +599,14 @@ namespace motocart {
     export function canGoStraight (): boolean {
         let b = getMazeBlock(xpos,ypos-1,zpos);
         return ((b=='1')||(b=='2')||(b=='3'));
+    }
+
+    /**  
+     * return true if the cart is initialized, otherwise, false
+    */
+    //% block
+    export function isInitialized():boolean {
+        return initialized;
     }
 
     /**
@@ -429,6 +728,46 @@ namespace motocart {
             zpos = Math.round(zpos*1000)/1000;
             ypos = getMazeElevation(xpos,zpos);
             tp(xpos,ypos,zpos);
+        }
+
+        // check to see if the cart is at any point of interest
+        if (reachedDestination()) {
+            if (has_passenger) {
+                // this was a drop-off - get rid of the passenger by teleporting it below the world
+                player.execute("/tp @e[type=villager,tag="+ player.name()+"] 0 0 0");
+
+                // clear the destination
+                destination = -1;
+                has_passenger = false;
+
+                // TODO: increment drop-off score
+            } else {
+                // this was a pick-up - summon a passenger
+                let sel = mobs.target(ALL_ENTITIES)
+                sel.addRule("type", "villager")
+                sel.addRule("tag", player.name())
+                sel.withinRadius(2048);
+                let qta = mobs.queryTarget(sel);
+                if (qta.length!=0) {
+                    // the villager exists - just make it ride the cart
+                    player.execute("/ride @e[type=villager,tag="+ player.name()+"] start_riding @e[type=minecart,tag=" + player.name() + "]");
+                } else {
+                    // summon a passenger to ride the minecart
+                    // TODO: random name?
+                    player.execute("/ride @e[type=minecart,tag=" + player.name() + "] summon_rider villager \"\" \"passenger\"");
+
+                    // tag the passenger to make it unique
+                    player.execute("/tag @e[type=villager,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
+                }
+    
+                // get a destination (must be different than the current destination)
+                let oldDestination = destination;
+                while (destination==oldDestination) destination = Math.floor(Math.random()*destinations.length);
+                has_passenger = true;
+                systemMessage = "Drop off passenger at "+destinations[destination].name;
+                
+                // TODO: update pickup score
+            }
         }
     }
 

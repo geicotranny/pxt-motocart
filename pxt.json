@@ -1,6 +1,6 @@
 {
     "name": "pxt-motocart",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "This extension provides new blocks and API for motorized minecarts",
     "dependencies": {
         "core": "*",
@@ -14,7 +14,7 @@
         "test.ts"
     ],
     "targetVersions": {
-        "target": "1.5.62",
+        "target": "1.5.64",
         "targetId": "minecraft"
     },
     "supportedTargets": [

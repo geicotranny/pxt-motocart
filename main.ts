@@ -1,11 +1,9 @@
 /**
  * TODO:
- * Minecart summon does not bring passenger
- * Minecart stops at pickup location
- * Pickup requires pickup command
- * Dropoff requires dropoff command
- * Add function for detecting passenger
- * Add function for detecting destination
+ * Battery use
+ * Motor accuracy (turns and distance)
+ * Motor speed
+ * Make stop command work
  */
 /**
  * Custom blocks
@@ -244,26 +242,117 @@ namespace motocart {
     let has_passenger=false;
     let destination=-1;
     
-    let systemMessage = "Ready to Roll"
-    // by default, this runs once a second
-    loops.forever(function() {
-        player.execute("title @s actionbar "+systemMessage);
-    });
+    /** 
+     * This task runs once each second.  It is used to make the 
+     * actionbar text persistent on the screen.
+     */
+    systemMessage("Ready to Roll");
+    function systemMessage(msg:string):void {
+        player.execute("title @s actionbar "+msg);
+        player.say(msg);
+    };
 	
+    /**
+     * helper function to remove the passenger if one exists
+     */
+    function removePassenger():void {
+        let sel = mobs.target(ALL_ENTITIES)
+        sel.addRule("type", "villager")
+        sel.addRule("tag", player.name())
+        sel.withinRadius(2048);
+        let qta = mobs.queryTarget(sel);
+        if (qta.length!=0) {
+            player.execute("/tp @e[type=villager,tag="+ player.name()+"] 0 0 0");
+        }
+        has_passenger = false;
+    }
     /**
      * Determine if the cart has reached its destination
      */
     //% block
-    export function reachedDestination():boolean {
+    export function isCartAtDestination():boolean {
         if (destination<0) return false;
         if ((Math.floor(xpos)==destinations[destination].xpos)&&(Math.floor(zpos)==destinations[destination].zpos)) return true;
         return false;
     }
 
+    /**
+     * Attempt to drop off the passenger.  This function should only be called when
+     * the destination is reached.
+     */
+    //% block
+    export function dropOffPassenger() {
+        if (!initialized) return;
+        if (!has_passenger) return;
+        if (!isCartAtDestination()) return;
+        removePassenger();
+        player.execute("playsound random.levelup");
+        systemMessage("Passenger Dropped Off");
+        loops.pause(2000);
+        destination = -1;
+    }
+
+    /**
+     * Attempt to pick up the passenger.  This function should only be called when
+     * the destination is reached.
+     */
+    //% block
+    export function pickUpPassenger() {
+        if (!initialized) return;
+        if (has_passenger) return;
+        if (!isCartAtDestination()) return;
+
+        player.execute("playsound firework.launch");
+        systemMessage("Passenger Picked Up");
+
+        // summon a passenger
+        let sel = mobs.target(ALL_ENTITIES)
+        sel.addRule("type", "villager")
+        sel.addRule("tag", player.name())
+        sel.withinRadius(2048);
+        let qta = mobs.queryTarget(sel);
+        if (qta.length!=0) {
+            // the villager exists - just make it ride the cart
+            player.execute("/ride @e[type=villager,tag="+ player.name()+"] start_riding @e[type=minecart,tag=" + player.name() + "]");
+        } else {
+            // summon a passenger to ride the minecart
+            // TODO: random name?
+            player.execute("/ride @e[type=minecart,tag=" + player.name() + "] summon_rider villager \"\" \"passenger\"");
+
+            // tag the passenger to make it unique
+            player.execute("/tag @e[type=villager,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
+        }    
+        loops.pause(2000);
+
+        // get a destination (must be different than the current destination)
+        let oldDestination = destination;
+        while (destination==oldDestination) destination = Math.floor(Math.random()*destinations.length);
+        has_passenger = true;
+        systemMessage("Drop off passenger at "+destinations[destination].name)
+    }
+
+    /**
+     * Find a new passenger to pick up. If a passenger has already been located, this function does nothing.
+     */
+    //% block
+    export function findNewPassenger() {
+        // get a destination (must be different than the current destination)
+        if (destination>=0) return;
+        destination = Math.floor(Math.random()*destinations.length);
+        systemMessage("Pick up passenger at "+destinations[destination].name)
+    }
+
+    /**
+     * Determine if there is a passenger in the cart
+     */
+    //% block
+    export function isPassengerInCart():boolean {
+        return has_passenger;
+    }
+
     // attempt to stop the minecart - this function is asynchronous
     player.onTellCommand("stop", function() {
         initialized = false;
-        systemMessage = "";
     })
 
     // call the cart to the starting position
@@ -284,7 +373,7 @@ namespace motocart {
      * helper function to set minecart parameters based on world scoreboards.
      */
     function initMinecart():void {
-        systemMessage = "Initializing Cart"
+        systemMessage("Initializing Cart")
 
         // add player to scoreboards if not already there.
         player.execute("scoreboard players add @s road_tests 0")
@@ -462,10 +551,8 @@ namespace motocart {
     // a helper function to create a minecart at the specified world position.
     // @param startPosition - where to place the cart
     // @param startHeading - the starting orientation of the cart
-    // @param passengerName - the name of the passenger to use
-    function create(startPosition:Position, startHeading:number,passengerName:string):boolean {
+    function create(startPosition:Position, startHeading:number):boolean {
         initMinecart();
-        systemMessage = "";
 
         // set the initial position and heading
         xpos = startPosition.getValue(Axis.X)+.5;
@@ -473,6 +560,9 @@ namespace motocart {
         zpos = startPosition.getValue(Axis.Z)+.5;
         dir = 0;
         
+        // remove any existing passenger
+        removePassenger();
+
         // if the cart exists, teleport it
         let sel = mobs.target(ALL_ENTITIES)
         sel.addRule("type", "minecart")
@@ -524,12 +614,11 @@ namespace motocart {
      * return a valid destination, GPS must be enabled and the cart must be equiped with GPS.  If these
      * conditions are not met, then -1 is returned.
      */
-    //% block
-    export function getDestinationCode():number {
+    function getDestinationCode():number {
         if ((gps_count == 0)||(!gps_enabled)||(!initialized)) return -1;
         if (destination<0) {
             destination = Math.floor(Math.random()*destinations.length);
-            systemMessage = "Pick up passenger at "+destinations[destination].name;
+            systemMessage("Pick up passenger at "+destinations[destination].name)
          }
         return destination;
     }
@@ -627,7 +716,7 @@ namespace motocart {
                     // here the brick has been found
                     // summon the minecart
                     let cartpos = blockpos;
-                    create(blockpos,0,"Sparky")
+                    create(blockpos,0)
 
                     // based on the position of the curb to the minecart, set the player position and heading
                     if (blocks.testForBlock(STONE_BRICKS_SLAB,cartpos.add(pos(0,0,1)))) {
@@ -728,46 +817,6 @@ namespace motocart {
             zpos = Math.round(zpos*1000)/1000;
             ypos = getMazeElevation(xpos,zpos);
             tp(xpos,ypos,zpos);
-        }
-
-        // check to see if the cart is at any point of interest
-        if (reachedDestination()) {
-            if (has_passenger) {
-                // this was a drop-off - get rid of the passenger by teleporting it below the world
-                player.execute("/tp @e[type=villager,tag="+ player.name()+"] 0 0 0");
-
-                // clear the destination
-                destination = -1;
-                has_passenger = false;
-
-                // TODO: increment drop-off score
-            } else {
-                // this was a pick-up - summon a passenger
-                let sel = mobs.target(ALL_ENTITIES)
-                sel.addRule("type", "villager")
-                sel.addRule("tag", player.name())
-                sel.withinRadius(2048);
-                let qta = mobs.queryTarget(sel);
-                if (qta.length!=0) {
-                    // the villager exists - just make it ride the cart
-                    player.execute("/ride @e[type=villager,tag="+ player.name()+"] start_riding @e[type=minecart,tag=" + player.name() + "]");
-                } else {
-                    // summon a passenger to ride the minecart
-                    // TODO: random name?
-                    player.execute("/ride @e[type=minecart,tag=" + player.name() + "] summon_rider villager \"\" \"passenger\"");
-
-                    // tag the passenger to make it unique
-                    player.execute("/tag @e[type=villager,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
-                }
-    
-                // get a destination (must be different than the current destination)
-                let oldDestination = destination;
-                while (destination==oldDestination) destination = Math.floor(Math.random()*destinations.length);
-                has_passenger = true;
-                systemMessage = "Drop off passenger at "+destinations[destination].name;
-                
-                // TODO: update pickup score
-            }
         }
     }
 

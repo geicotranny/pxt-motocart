@@ -265,7 +265,6 @@ namespace motocart {
     systemMessage("Ready to Roll");
     function systemMessage(msg:string):void {
         player.execute("title @s actionbar "+msg);
-        player.say(msg);
     };
 	
     /** this helper function determines if the cart is currently within its lane
@@ -532,9 +531,6 @@ player.say("Traffic Violation:"+violation);
         gps_enabled = checkClassroomSetting("gps_enabled=!0");
         passengers_enabled = checkClassroomSetting("passengers=!0");
         realism = checkClassroomSetting("realism=!0");
-if (gps_enabled) player.say("GPS Enabled");
-if (passengers_enabled) player.say("Passengers Enabled");
-if (realism) player.say("Realism Enabled");
 
         // set cart behavior based on customization
         if (checkScoreboard("gps_count=1")) gps_count = 1;
@@ -900,7 +896,6 @@ if (realism) player.say("Realism Enabled");
             return;
         }
         if (!isCorrectDirection()) showViolation(TrafficViolation.WRONG_WAY);
-    player.say(dir);
         let x = 0;
         // take steps of step size to get close to destination
         let dz = MOVE_STEP*2*front.getValue(Axis.Z);

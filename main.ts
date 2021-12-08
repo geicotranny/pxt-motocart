@@ -3,7 +3,6 @@
  * Battery use
  * Motor accuracy (turns and distance)
  * Motor speed
- * Make stop command work
  */
 /**
  * Custom blocks
@@ -11,6 +10,17 @@
 //% weight=100 color=#EB0DD5 icon=""
 namespace motocart {
     const MOVE_STEP = .2;
+    enum TrafficViolation {
+        INVALID_STOP,           // violation if cart stopped at non-stop area
+        MISSED_STOP,            // violation if cart did not stop at stop sign
+        WRONG_WAY,              
+        LANE_VIOLATION,
+        INVALID_DROPOFF,        // attempt was made to drop off in the wrong location
+        INVALID_PICKUP,         // attempt was made to pick up at the wrong location 
+        NO_GPS_WARNING,         // cart does not have GPS
+        GPS_DISABLED_WARNING,   // GPS is not enabled for the classroom
+        CANT_CLIMB
+    };
     let isClassroom = checkForClassroomMarker();
     let initialized = false;
     let map_tile = [
@@ -224,7 +234,11 @@ namespace motocart {
     let swWorldLtX = false;
     let swWorldLtZ = false;
 
-    let gps_enabled = true;
+    // classroom settings
+    let gps_enabled = false;
+    let passengers_enabled = false;
+    let realism = false;
+
     let gps_count  = 0;
     let battery_count = 0;
     let solar_count = 0;
@@ -241,6 +255,8 @@ namespace motocart {
 
     let has_passenger=false;
     let destination=-1;
+    let atStopState = false;
+    let stoppedAtStopCount = 0;
     
     /** 
      * This task runs once each second.  It is used to make the 
@@ -252,10 +268,93 @@ namespace motocart {
         player.say(msg);
     };
 	
+    /** this helper function determines if the cart is currently within its lane
+     * If it is, it returns true.  Otherwise, false
+     */
+    function isInLane():boolean {
+        if (!initialized) return true;
+        let xr = (xpos+1000) % 10;
+        let zr = (zpos+1000) % 10;
+        let inXLane = ((xr>=2.0)&&(xr<=3.5))||((xr>=6.5)&&(xr<=8));
+        let inZLane = ((zr>=2.0)&&(zr<=3.5))||((zr>=6.5)&&(zr<=8));
+        return inXLane||inZLane;
+    }
+
+    /** this helper function determines if the cart is going the 
+     * right direction. If it is, it returns true.  Otherwise, false
+     */
+    function isCorrectDirection():boolean {
+        if (!initialized) return true;
+        let xr = (xpos+1000) % 10;
+        let zr = (zpos+1000) % 10;
+        let inLane = false;
+        if ((xr>=2.0)&&(xr<=3.5)) {
+            // on west side of street - cart should be heading south
+            inLane = true;
+            if ((dir<=135)&&(dir>=45)) return true;
+        } else if ((xr>=6.5)&&(xr<=8)) {
+            // on east side of street - cart should be heading north
+            inLane = true;
+            if ((dir<=315)&&(dir>=225)) return true;
+        }
+        if ((zr>=2.0)&&(zr<=3.5)) {
+            // north side of street - cart should be heading west
+            inLane = true;
+            if ((dir<=225)&&(dir>=135)) return true;
+        } else if ((zr>=6.5)&&(zr<=8)) {
+            // south side of street - cart should be heading east
+            inLane = true;
+            if ((dir<=45)||(dir>=315)) return true;
+        }
+        // either not in lane, or wrong way
+        // if not in lane, return true so we don't double count
+        // this violation.
+        return !inLane;
+    }
+
+    /**
+     * helper function that displays traffic violation messages
+     */
+    function showViolation(violation:TrafficViolation):void {
+        // TODO: show the violation
+player.say("Traffic Violation:"+violation);
+        switch (violation) {
+            case TrafficViolation.INVALID_STOP:
+                player.execute("DIALOGUE OPEN @e[tag=mabel] @s invalid_stop")
+                break;
+            case TrafficViolation.MISSED_STOP:
+                player.execute("DIALOGUE OPEN @e[tag=mabel] @s missed_stop")
+                break;
+            case TrafficViolation.WRONG_WAY:
+                player.execute("DIALOGUE OPEN @e[tag=mabel] @s wrong_way")
+                break;
+            case TrafficViolation.LANE_VIOLATION:
+                player.execute("DIALOGUE OPEN @e[tag=mabel] @s lane_violation")
+                break;
+            case TrafficViolation.INVALID_DROPOFF:
+                player.execute("DIALOGUE OPEN @e[tag=mabel] @s invalid_dropoff")
+                break;
+            case TrafficViolation.INVALID_PICKUP:
+                player.execute("DIALOGUE OPEN @e[tag=mabel] @s invalid_pickup")
+                break;
+            case TrafficViolation.NO_GPS_WARNING:
+                player.execute("DIALOGUE OPEN @e[tag=mabel] @s no_gps")
+                break;
+            case TrafficViolation.GPS_DISABLED_WARNING:
+                player.execute("DIALOGUE OPEN @e[tag=mabel] @s gps_disabled")
+                break;
+            case TrafficViolation.CANT_CLIMB:
+                break;
+            default:
+                break;
+        }
+    }
+
     /**
      * helper function to remove the passenger if one exists
      */
     function removePassenger():void {
+        if (!initialized) return;
         let sel = mobs.target(ALL_ENTITIES)
         sel.addRule("type", "villager")
         sel.addRule("tag", player.name())
@@ -271,9 +370,24 @@ namespace motocart {
      */
     //% block
     export function isCartAtDestination():boolean {
+        if (!initialized) return false;
         if (destination<0) return false;
         if ((Math.floor(xpos)==destinations[destination].xpos)&&(Math.floor(zpos)==destinations[destination].zpos)) return true;
         return false;
+    }
+
+    /**
+     * Pause for a short period of time.  This function should only be used at stop signs.
+     */
+    //% block
+    export function pauseAtStopSign() {
+        if (!initialized) return;
+        if (isAtStop()) {
+            stoppedAtStopCount ++;
+        } else {
+            showViolation(TrafficViolation.INVALID_STOP);
+        }
+        loops.pause(2000);
     }
 
     /**
@@ -283,11 +397,15 @@ namespace motocart {
     //% block
     export function dropOffPassenger() {
         if (!initialized) return;
-        if (!has_passenger) return;
-        if (!isCartAtDestination()) return;
+        if ((!has_passenger) || (!isCartAtDestination())) {
+            showViolation(TrafficViolation.INVALID_DROPOFF);
+            return;
+        }
         removePassenger();
-        player.execute("playsound random.levelup");
-        systemMessage("Passenger Dropped Off");
+        if (passengers_enabled) {
+            player.execute("playsound random.levelup");
+            systemMessage("Passenger Dropped Off");
+        }
         loops.pause(2000);
         destination = -1;
     }
@@ -299,29 +417,33 @@ namespace motocart {
     //% block
     export function pickUpPassenger() {
         if (!initialized) return;
-        if (has_passenger) return;
-        if (!isCartAtDestination()) return;
+        if ((has_passenger) || (!isCartAtDestination())) {
+            showViolation(TrafficViolation.INVALID_PICKUP);
+            return;
+        } 
+        if (passengers_enabled) {
 
-        player.execute("playsound firework.launch");
-        systemMessage("Passenger Picked Up");
+            player.execute("playsound firework.launch");
+            systemMessage("Passenger Picked Up");
 
-        // summon a passenger
-        let sel = mobs.target(ALL_ENTITIES)
-        sel.addRule("type", "villager")
-        sel.addRule("tag", player.name())
-        sel.withinRadius(2048);
-        let qta = mobs.queryTarget(sel);
-        if (qta.length!=0) {
-            // the villager exists - just make it ride the cart
-            player.execute("/ride @e[type=villager,tag="+ player.name()+"] start_riding @e[type=minecart,tag=" + player.name() + "]");
-        } else {
-            // summon a passenger to ride the minecart
-            // TODO: random name?
-            player.execute("/ride @e[type=minecart,tag=" + player.name() + "] summon_rider villager \"\" \"passenger\"");
+            // summon a passenger
+            let sel = mobs.target(ALL_ENTITIES)
+            sel.addRule("type", "villager")
+            sel.addRule("tag", player.name())
+            sel.withinRadius(2048);
+            let qta = mobs.queryTarget(sel);
+            if (qta.length!=0) {
+                // the villager exists - just make it ride the cart
+                player.execute("/ride @e[type=villager,tag="+ player.name()+"] start_riding @e[type=minecart,tag=" + player.name() + "]");
+            } else {
+                // summon a passenger to ride the minecart
+                // TODO: random name?
+                player.execute("/ride @e[type=minecart,tag=" + player.name() + "] summon_rider villager \"\" \"passenger\"");
 
-            // tag the passenger to make it unique
-            player.execute("/tag @e[type=villager,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
-        }    
+                // tag the passenger to make it unique
+                player.execute("/tag @e[type=villager,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
+            }    
+        }
         loops.pause(2000);
 
         // get a destination (must be different than the current destination)
@@ -369,10 +491,23 @@ namespace motocart {
         return (qta.length!=0);
     }
 
+    function checkClassroomSetting(comparison:string):boolean {
+        let sel = mobs.target(ALL_ENTITIES);
+        sel.addRule("type", "armor_Stand");
+        sel.addRule("name", "classroom1_marker");
+        sel.addRule("scores","{"+comparison+"}")
+        let qta = mobs.queryTarget(sel);
+        return (qta.length!=0);
+    }
+
     /** 
      * helper function to set minecart parameters based on world scoreboards.
      */
     function initMinecart():void {
+        // remove the player's agent if it exists
+        agent.teleport(world(0,0,0),NORTH);
+
+        // initialize the minecart
         systemMessage("Initializing Cart")
 
         // add player to scoreboards if not already there.
@@ -393,6 +528,15 @@ namespace motocart {
         player.execute("scoreboard players add @s ac_count 0")
         player.execute("scoreboard players add @s ergonomics_count 0")
 
+        // set interface behavior based on classroom settings
+        gps_enabled = checkClassroomSetting("gps_enabled=!0");
+        passengers_enabled = checkClassroomSetting("passengers=!0");
+        realism = checkClassroomSetting("realism=!0");
+if (gps_enabled) player.say("GPS Enabled");
+if (passengers_enabled) player.say("Passengers Enabled");
+if (realism) player.say("Realism Enabled");
+
+        // set cart behavior based on customization
         if (checkScoreboard("gps_count=1")) gps_count = 1;
         for (let i=1;i<=5;i++) {if (checkScoreboard("battery_count="+i)) battery_count=i;}
         for (let i=1;i<=5;i++) {if (checkScoreboard("solar_count="+i)) solar_count=i;}
@@ -589,12 +733,21 @@ namespace motocart {
 
     /** 
      * Get the gps direction to use for the current destination.  A value of 1
-     * indicates a left turn.  A value of 2 indicates a right turn.  All other
-     * values indicate straight.
+     * indicates a left turn.  A value of 2 indicates a right turn.  3 indicates
+     * go straight. All other values indicate undefined.
      */
     //% block
     export function getGpsDirection():number {
-        if (destination<0) return 0
+        if (destination<0) return 0;
+        if (gps_count==0) {
+            showViolation(TrafficViolation.NO_GPS_WARNING);
+            return 0;
+        }
+        if (!gps_enabled) {
+            showViolation(TrafficViolation.GPS_DISABLED_WARNING);
+            return 0;
+        }
+
         let currentX = Math.floor(xpos);
         let currentZ = Math.floor(zpos);
 
@@ -746,7 +899,8 @@ namespace motocart {
         if (!initialized) {
             return;
         }
-
+        if (!isCorrectDirection()) showViolation(TrafficViolation.WRONG_WAY);
+    player.say(dir);
         let x = 0;
         // take steps of step size to get close to destination
         let dz = MOVE_STEP*2*front.getValue(Axis.Z);
@@ -817,7 +971,18 @@ namespace motocart {
             zpos = Math.round(zpos*1000)/1000;
             ypos = getMazeElevation(xpos,zpos);
             tp(xpos,ypos,zpos);
+            if (isAtStop()) {
+                atStopState = true;
+            } else {
+                if (atStopState) {
+                    // here if we just exited the stop
+                    atStopState = false;
+                    if (stoppedAtStopCount==0) showViolation(TrafficViolation.MISSED_STOP)
+                    stoppedAtStopCount = 0;
+                }
+            }
         }
+        if (!isInLane()) showViolation(TrafficViolation.LANE_VIOLATION);
     }
 
     /**

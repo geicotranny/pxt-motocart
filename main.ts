@@ -1,15 +1,9 @@
 /**
  * TODO:
- * Battery use
  * Motor accuracy (turns and distance)
- * Motor speed
- */
-/**
- * Custom blocks
  */
 //% weight=100 color=#EB0DD5 icon=""
 namespace motocart {
-    const MOVE_STEP = .2;
     enum TrafficViolation {
         INVALID_STOP,           // violation if cart stopped at non-stop area
         MISSED_STOP,            // violation if cart did not stop at stop sign
@@ -208,7 +202,7 @@ namespace motocart {
         {xpos:27, zpos:-95, stop:9, name:"150 Industrial Parkway"},
         {xpos:7, zpos:-82, stop:12, name:"85 Commerce Way"},
         {xpos:85, zpos:-78, stop:68, name:"100 Main Street"},
-        {xpos:117, zpos:-76, stop:23, name:"200 Riverside Drive"},
+        {xpos:117, zpos:-76, stop:23, name:"200 Jasper Drive"},
         {xpos:32, zpos:-56, stop:37, name:"55 Century Avenue"},
         {xpos:77, zpos:-56, stop:69, name:"25 Market Place"},
         {xpos:2, zpos:-36, stop:47, name:"75 Pine Drive"},
@@ -218,6 +212,8 @@ namespace motocart {
         {xpos:44, zpos:-3, stop:62, name:"65 Maple Way"},
         {xpos:114, zpos:-118, stop:11, name:"60 Ridgeline Street"}
     ];
+    let speedSteps = [0.06, 0.12, 0.16, 0.24, 0.32, 0.48 ]
+    // Cart position
     let xpos:number = 0;
     let ypos:number = 0;
     let zpos:number = 0;
@@ -239,6 +235,7 @@ namespace motocart {
     let passengers_enabled = false;
     let realism = false;
 
+    // cart configuration settings
     let gps_count  = 0;
     let battery_count = 0;
     let solar_count = 0;
@@ -253,6 +250,37 @@ namespace motocart {
     let ac_count = 0;
     let ergonomics_count = 0;
 
+    // Constants related to cart configuration
+    const CHARGE_PER_BATTERY  = 50;
+    const BATTERY_MASS        = 500;
+    const SOLAR_RECHARGE_RATE = 10/12000;  // expressed in charge per tick
+    const SOLAR_MASS          = 2;  // additional mass for each solar upgrade;
+    const REGEN_RECHARGE_RATE = .19;  // expressed in percent of energy lost from equivalent uphill motion 
+    const REGEN_MASS          = 2;  // additional mass for each regen brake upgrade
+    const BASE_MOTOR_MASS     = 50;
+    const MOTOR_POWER_MASS    = 25; // additional motor mass per power upgrade
+    const MOTOR_SPEED_MASS    = 25; // additional motor mass per speed upgrade
+    const MOTOR_EFF_MASS      = 0;  // additional motor mass per efficiency upgrade
+    const SPEED_BOOST_PERCENT = 0.5; // boost in speed for each speed upgrade (linear increase)
+    const POWER_MASS_LIMIT    = 0.002; // the minimum ratio of power upgrade to vehicle mass for hill climbing
+    const BASE_CHASSIS_MASS   = 200; // the base mass of the chassis
+    const ERGONOMIC_MASS      = 50; // the additional mass for each ergonomics upgrade
+    const NOTEBLOCK_MASS      = 1;  // the additional mass associated with each infotainment upgrade
+    const AC_MASS             = 1;  // the additional mass associated with each climate control upgrade
+    const EFFICIENCY_BUMP     = .1;  // constant related to efficiency improvement of motors
+    const UPHILL_ENERGY_FACTOR= 10; // amount of energy lost going uphill relative to flat ground
+
+    let cartMass = 0;
+    let canClimb = false;
+    let batteryCharge = 0;
+    let recharge = 0;
+    let comfortLevel = 0;
+    let efficiencyLevel = 0;
+
+    // battery charging variables
+    let previous_ticks = -1;
+
+    // passenger and destination-related variables
     let has_passenger=false;
     let destination=-1;
     let atStopState = false;
@@ -265,6 +293,7 @@ namespace motocart {
     systemMessage("Ready to Roll");
     function systemMessage(msg:string):void {
         player.execute("title @s actionbar "+msg);
+        player.say(msg);
     };
 	
     /** this helper function determines if the cart is currently within its lane
@@ -277,6 +306,30 @@ namespace motocart {
         let inXLane = ((xr>=2.0)&&(xr<=3.5))||((xr>=6.5)&&(xr<=8));
         let inZLane = ((zr>=2.0)&&(zr<=3.5))||((zr>=6.5)&&(zr<=8));
         return inXLane||inZLane;
+    }
+
+    /** this helper function updates the battery based on solar recharging
+     */
+    function updateSolarCharge() {
+        if (solar_count==0) return;
+        if (previous_ticks<0) previous_ticks = gameplay.timeQuery(GAME_TIME); 
+        
+        // get the the current game time (ticks)
+        let ticks = gameplay.timeQuery(GAME_TIME);
+        let elapsed_ticks = ticks-previous_ticks;
+        if (elapsed_ticks<0) elapsed_ticks=0;
+        previous_ticks = ticks;
+
+        // get the time of day
+        let time_of_day = gameplay.timeQuery(DAY_TIME);
+
+        // if the time of day is between 0 and 12,000, there is 
+        // enough sunlight to charge the battery.
+        if (time_of_day<=12000) {
+            batteryCharge = batteryCharge+elapsed_ticks*SOLAR_RECHARGE_RATE;
+            if (batteryCharge>(1+battery_count)*CHARGE_PER_BATTERY) 
+                batteryCharge=(1+battery_count)*CHARGE_PER_BATTERY;    
+        }
     }
 
     /** this helper function determines if the cart is going the 
@@ -319,30 +372,31 @@ namespace motocart {
 player.say("Traffic Violation:"+violation);
         switch (violation) {
             case TrafficViolation.INVALID_STOP:
-                player.execute("DIALOGUE OPEN @e[tag=mabel] @s invalid_stop")
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s invalid_stop")
                 break;
             case TrafficViolation.MISSED_STOP:
-                player.execute("DIALOGUE OPEN @e[tag=mabel] @s missed_stop")
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s missed_stop")
                 break;
             case TrafficViolation.WRONG_WAY:
-                player.execute("DIALOGUE OPEN @e[tag=mabel] @s wrong_way")
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s wrong_way")
                 break;
             case TrafficViolation.LANE_VIOLATION:
-                player.execute("DIALOGUE OPEN @e[tag=mabel] @s lane_violation")
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s lane_violation")
                 break;
             case TrafficViolation.INVALID_DROPOFF:
-                player.execute("DIALOGUE OPEN @e[tag=mabel] @s invalid_dropoff")
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s invalid_dropoff")
                 break;
             case TrafficViolation.INVALID_PICKUP:
-                player.execute("DIALOGUE OPEN @e[tag=mabel] @s invalid_pickup")
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s invalid_pickup")
                 break;
             case TrafficViolation.NO_GPS_WARNING:
-                player.execute("DIALOGUE OPEN @e[tag=mabel] @s no_gps")
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s no_gps")
                 break;
             case TrafficViolation.GPS_DISABLED_WARNING:
-                player.execute("DIALOGUE OPEN @e[tag=mabel] @s gps_disabled")
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s gps_disabled")
                 break;
             case TrafficViolation.CANT_CLIMB:
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s cant_climb")
                 break;
             default:
                 break;
@@ -456,10 +510,13 @@ player.say("Traffic Violation:"+violation);
      * Find a new passenger to pick up. If a passenger has already been located, this function does nothing.
      */
     //% block
+let completedRuns = 0;
     export function findNewPassenger() {
         // get a destination (must be different than the current destination)
         if (destination>=0) return;
         destination = Math.floor(Math.random()*destinations.length);
+player.say("Completed Runs: "+completedRuns+" BatteryCharge :"+batteryCharge+" uphill energy: "+uphillNrg);
+completedRuns++;
         systemMessage("Pick up passenger at "+destinations[destination].name)
     }
 
@@ -479,6 +536,8 @@ player.say("Traffic Violation:"+violation);
     // call the cart to the starting position
     player.onTellCommand("call", function () {
         motocart.summonCart();
+player.say("Cart Mass: "+cartMass+"kg  Can Climb: "+canClimb);
+updateSolarCharge() 
     })
 
     function checkScoreboard(comparison:string):boolean {
@@ -534,18 +593,29 @@ player.say("Traffic Violation:"+violation);
 
         // set cart behavior based on customization
         if (checkScoreboard("gps_count=1")) gps_count = 1;
-        for (let i=1;i<=5;i++) {if (checkScoreboard("battery_count="+i)) battery_count=i;}
-        for (let i=1;i<=5;i++) {if (checkScoreboard("solar_count="+i)) solar_count=i;}
-        for (let i=1;i<=5;i++) {if (checkScoreboard("regen_count="+i)) regen_count=i;}
-        for (let i=1;i<=5;i++) {if (checkScoreboard("power_count="+i)) power_count=i;}
-        for (let i=1;i<=5;i++) {if (checkScoreboard("speed_count="+i)) speed_count=i;}
-        for (let i=1;i<=5;i++) {if (checkScoreboard("efficiency_count="+i)) efficiency_count=i;}
-        for (let i=1;i<=5;i++) {if (checkScoreboard("accuracy_count="+i)) accuracy_count=i;}
-        for (let i=1;i<=1;i++) {if (checkScoreboard("position_count="+i)) position_count=i;}
-        for (let i=1;i<=1;i++) {if (checkScoreboard("heading_count="+i)) heading_count=i;}
-        for (let i=1;i<=5;i++) {if (checkScoreboard("noteblock_count="+i)) noteblock_count=i;}
-        for (let i=1;i<=1;i++) {if (checkScoreboard("ac_count="+i)) ac_count=i;}
-        for (let i=1;i<=5;i++) {if (checkScoreboard("ergonomics_count="+i)) ergonomics_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("battery_count="+i)) battery_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("solar_count="+i)) solar_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("regen_count="+i)) regen_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("power_count="+i)) power_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("speed_count="+i)) speed_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("efficiency_count="+i)) efficiency_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("accuracy_count="+i)) accuracy_count=i;}
+        for (let i=0;i<=1;i++) {if (checkScoreboard("position_count="+i)) position_count=i;}
+        for (let i=0;i<=1;i++) {if (checkScoreboard("heading_count="+i)) heading_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("noteblock_count="+i)) noteblock_count=i;}
+        for (let i=0;i<=1;i++) {if (checkScoreboard("ac_count="+i)) ac_count=i;}
+        for (let i=0;i<=5;i++) {if (checkScoreboard("ergonomics_count="+i)) ergonomics_count=i;}
+
+        // calculate the vehicle mass
+        cartMass = BASE_CHASSIS_MASS + BATTERY_MASS*(1+battery_count) + BASE_MOTOR_MASS + MOTOR_EFF_MASS*efficiency_count +
+                MOTOR_POWER_MASS*power_count + MOTOR_SPEED_MASS*speed_count + NOTEBLOCK_MASS*noteblock_count +
+                REGEN_MASS*regen_count + SOLAR_MASS*solar_count;
+        canClimb=false;
+        if (((power_count+1)/cartMass)>=POWER_MASS_LIMIT) canClimb = true;
+
+        // initialize other variables
+        previous_ticks = -1;
+        batteryCharge = (battery_count+1)*CHARGE_PER_BATTERY;
     }
 
     function checkForClassroomMarker():boolean {
@@ -727,6 +797,32 @@ player.say("Traffic Violation:"+violation);
        return true;
     }
 
+    /**
+     * get the mass of the cart in kg
+     */
+    //% block
+    export function mass():number {
+        return cartMass;
+    }
+
+    /**
+     * get the battery level (percent)
+     */
+    //% block
+    export function batteryLevel():number {
+        updateSolarCharge();
+        return batteryCharge/((1+battery_count)*CHARGE_PER_BATTERY);
+    }
+
+    /**
+     * return true if the cart motors are powerful enough to
+     * climb a hill.
+     */
+    //% block
+    export function canClimbHills():boolean {
+        return canClimb;
+    }
+
     /** 
      * Get the gps direction to use for the current destination.  A value of 1
      * indicates a left turn.  A value of 2 indicates a right turn.  3 indicates
@@ -886,8 +982,147 @@ player.say("Traffic Violation:"+violation);
         return false;
     }
 
+    let uphillNrg=0;
+    // this helper function moves the minecart a single step
+    function moveStep(step:number) : void {
+        if (step<=0) return;
+
+        // calculate the energy consumed by this move
+        let energy_needed = step*1.0;
+        energy_needed *= speedSteps[speed_count]*speedSteps[speed_count];      // adjust for speed
+        energy_needed *= (1-EFFICIENCY_BUMP*efficiency_count);  // adjust for motor efficiency
+        
+        // return if there is not enough charge left in the battery
+        if (batteryCharge<energy_needed) return;
+        
+        // step is the distance traveled along the heading.
+        // calculate the dz and dx to travel
+        let dz = step*2*front.getValue(Axis.Z);
+        let dx = step*2*front.getValue(Axis.X);
+
+        // calculate the new world coordinates of the front right and left corners of the cart
+        let newRtX  = world(Math.floor(xpos+dx+cornerRt.getValue(Axis.X)), ypos, Math.floor(zpos+cornerRt.getValue(Axis.Z)));
+        let newRtZ  = world(Math.floor(xpos+cornerRt.getValue(Axis.X)), ypos, Math.floor(zpos+dz+cornerRt.getValue(Axis.Z)));
+        let newLtX  = world(Math.floor(xpos+dx+cornerLt.getValue(Axis.X)), ypos, Math.floor(zpos+cornerLt.getValue(Axis.Z)));
+        let newLtZ  = world(Math.floor(xpos+cornerRt.getValue(Axis.X)), ypos, Math.floor(zpos+dz+cornerLt.getValue(Axis.Z)));
+        
+        // update sidewalk checks
+        if (newRtX!=worldRtX) {
+            worldRtX = newRtX;
+            if (worldRtX==worldRtZ) {
+                swWorldRtX = swWorldRtZ;
+            } else {
+                swWorldRtX = (getMazeBlock(worldRtX.getValue(Axis.X),ypos,worldRtX.getValue(Axis.Z))=="X");    
+            }
+        }
+        if (newRtZ!=worldRtZ) {
+            worldRtZ = newRtZ;
+            if (worldRtZ==worldRtX) {
+                swWorldRtZ = swWorldRtX;
+            } else {
+                swWorldRtZ = (getMazeBlock(worldRtZ.getValue(Axis.X),ypos,worldRtZ.getValue(Axis.Z))=="X");    
+            }
+        }
+        if (newLtX!=worldLtX) {
+            worldLtX = newLtX;
+            if (worldLtX==worldLtZ) {
+                swWorldLtX = swWorldLtZ;
+            } else {
+                swWorldLtX = (getMazeBlock(worldLtX.getValue(Axis.X),ypos,worldLtX.getValue(Axis.Z))=="X");    
+            }
+        }
+        if (newLtZ!=worldLtZ) {
+            worldLtZ = newLtZ;
+            if (worldLtZ==worldLtX) {
+                swWorldLtZ = swWorldLtX;
+            } else {
+                swWorldLtZ = (getMazeBlock(worldLtZ.getValue(Axis.X),ypos,worldLtZ.getValue(Axis.Z))=="X");    
+            }
+        }
+
+        let dxtemp = dx;
+        let dztemp = dz;
+        if (swWorldRtX) {
+            // sidewalk has been bumped - limit dx to distance to sidewalk
+            let finalX = Math.round(xpos*2)/2;
+            dxtemp = finalX-xpos;
+        }
+        if (swWorldRtZ) {
+            // sidewalk has been bumped - limit dz to distance to sidewalk
+            let finalZ = Math.round(zpos*2)/2;
+            dztemp = finalZ-zpos;
+        }
+        if (swWorldLtX) {
+            // sidewalk has been bumped - limit dx to distance to sidewalk
+            let finalX = Math.round(xpos*2)/2;
+            dxtemp = finalX-xpos;
+        }
+        if (swWorldLtZ) {
+            // sidewalk has been bumped - limit dz to distance to sidewalk 
+            let finalZ = Math.round(zpos*2)/2;
+            dztemp = finalZ-zpos;
+        }
+
+        // advance x and z positions (rounded to nearest 1000th)
+        xpos = xpos+dxtemp;                
+        zpos = zpos+dztemp;                
+        xpos = Math.round(xpos*1000)/1000;
+        zpos = Math.round(zpos*1000)/1000;
+        
+        // exit with error if the cart needs to climb but cant
+        let ynext = getMazeElevation(xpos,zpos);
+        if ((ynext>ypos)&&(!canClimb)) {
+            showViolation(TrafficViolation.CANT_CLIMB);
+            
+            // stop the cart from further motion
+            initialized = false;
+            return;
+        }
+
+        // add energy usage for uphill
+        if (ynext > ypos) {
+            // the energy lost will scale with the weight of the cart
+            let cartBaseMass = BASE_CHASSIS_MASS+BASE_MOTOR_MASS+BATTERY_MASS;
+            let scaling_factor = cartMass/cartBaseMass;
+            let uphill_energy_needed = (energy_needed/step)*UPHILL_ENERGY_FACTOR*scaling_factor*(ynext-ypos);
+            energy_needed += uphill_energy_needed;
+            uphillNrg += uphill_energy_needed;
+        }
+        batteryCharge -= energy_needed;
+
+        // return if out of energy
+
+        // take care of regenerative braking
+        if (ynext < ypos) {
+            // the energy gained will scale with the weight of the cart
+            let cartBaseMass = BASE_CHASSIS_MASS+BASE_MOTOR_MASS+BATTERY_MASS;
+            let scaling_factor = cartMass/cartBaseMass;
+            let uphill_energy_needed = (energy_needed/step)*UPHILL_ENERGY_FACTOR*scaling_factor*(ynext-ypos);
+            batteryCharge -= (regen_count*REGEN_RECHARGE_RATE)*uphill_energy_needed;
+            if (batteryCharge>(1+battery_count)*CHARGE_PER_BATTERY)
+                batteryCharge = (1+battery_count)*CHARGE_PER_BATTERY 
+        }        
+        ypos = ynext;
+
+        // move the cart to the next position
+        tp(xpos,ypos,zpos);
+
+        // manage stop state
+        if (isAtStop()) {
+            atStopState = true;
+        } else {
+            if (atStopState) {
+                // here if we just exited the stop
+                atStopState = false;
+                if (stoppedAtStopCount==0) showViolation(TrafficViolation.MISSED_STOP)
+                stoppedAtStopCount = 0;
+            }
+        }
+    }
+
     /**
-     * move a specified amount of distance at the current heading
+     * move a specified amount of distance at the current heading.  The distance must be
+     * between 0 and 1 meter.
      * @param distance - the distance to move eg
      */
     //% block
@@ -896,86 +1131,22 @@ player.say("Traffic Violation:"+violation);
             return;
         }
         if (!isCorrectDirection()) showViolation(TrafficViolation.WRONG_WAY);
-        let x = 0;
+        if ((distance<0)||(distance>1)) return;
+
+        // recharge the battery based on solar chager (if one exists)
+        updateSolarCharge();
+
         // take steps of step size to get close to destination
-        let dz = MOVE_STEP*2*front.getValue(Axis.Z);
-        let dx = MOVE_STEP*2*front.getValue(Axis.X);
-
-        while (x + MOVE_STEP <= distance) {
-            x += MOVE_STEP;
-            let newRtX  = world(Math.floor(xpos+dx+cornerRt.getValue(Axis.X)), ypos, Math.floor(zpos+cornerRt.getValue(Axis.Z)));
-            let newRtZ  = world(Math.floor(xpos+cornerRt.getValue(Axis.X)), ypos, Math.floor(zpos+dz+cornerRt.getValue(Axis.Z)));
-            let newLtX  = world(Math.floor(xpos+dx+cornerLt.getValue(Axis.X)), ypos, Math.floor(zpos+cornerLt.getValue(Axis.Z)));
-            let newLtZ  = world(Math.floor(xpos+cornerRt.getValue(Axis.X)), ypos, Math.floor(zpos+dz+cornerLt.getValue(Axis.Z)));
-            // update sidewalk checks
-            if (newRtX!=worldRtX) {
-                worldRtX = newRtX;
-                if (worldRtX==worldRtZ) {
-                    swWorldRtX = swWorldRtZ;
-                } else {
-                    swWorldRtX = (getMazeBlock(worldRtX.getValue(Axis.X),ypos,worldRtX.getValue(Axis.Z))=="X");    
-                }
-            }
-            if (newRtZ!=worldRtZ) {
-                worldRtZ = newRtZ;
-                if (worldRtZ==worldRtX) {
-                    swWorldRtZ = swWorldRtX;
-                } else {
-                    swWorldRtZ = (getMazeBlock(worldRtZ.getValue(Axis.X),ypos,worldRtZ.getValue(Axis.Z))=="X");    
-                }
-            }
-            if (newLtX!=worldLtX) {
-                worldLtX = newLtX;
-                if (worldLtX==worldLtZ) {
-                    swWorldLtX = swWorldLtZ;
-                } else {
-                    swWorldLtX = (getMazeBlock(worldLtX.getValue(Axis.X),ypos,worldLtX.getValue(Axis.Z))=="X");    
-                }
-            }
-            if (newLtZ!=worldLtZ) {
-                worldLtZ = newLtZ;
-                if (worldLtZ==worldLtX) {
-                    swWorldLtZ = swWorldLtX;
-                } else {
-                    swWorldLtZ = (getMazeBlock(worldLtZ.getValue(Axis.X),ypos,worldLtZ.getValue(Axis.Z))=="X");    
-                }
-            }
-
-            let dxtemp = dx;
-            let dztemp = dz;
-            if (swWorldRtX) {
-                let finalX = Math.round(xpos*2)/2;
-                dxtemp = finalX-xpos;
-            }
-            if (swWorldRtZ) {
-                let finalZ = Math.round(zpos*2)/2;
-                dztemp = finalZ-zpos;
-            }
-            if (swWorldLtX) {
-                let finalX = Math.round(xpos*2)/2;
-                dxtemp = finalX-xpos;
-            }
-            if (swWorldLtZ) {
-                let finalZ = Math.round(zpos*2)/2;
-                dztemp = finalZ-zpos;
-            }
-
-            xpos = xpos+dxtemp;                
-            zpos = zpos+dztemp;                
-            xpos = Math.round(xpos*1000)/1000;
-            zpos = Math.round(zpos*1000)/1000;
-            ypos = getMazeElevation(xpos,zpos);
-            tp(xpos,ypos,zpos);
-            if (isAtStop()) {
-                atStopState = true;
-            } else {
-                if (atStopState) {
-                    // here if we just exited the stop
-                    atStopState = false;
-                    if (stoppedAtStopCount==0) showViolation(TrafficViolation.MISSED_STOP)
-                    stoppedAtStopCount = 0;
-                }
-            }
+        // the step size scales with the cart speed.
+        let x = 0;
+        let step = speedSteps[speed_count];
+        while (x + step <= distance) {
+            moveStep(step);
+            x+=step;
+        }
+        step = distance-x;
+        if (step>0.0001) {
+            moveStep(step);
         }
         if (!isInLane()) showViolation(TrafficViolation.LANE_VIOLATION);
     }

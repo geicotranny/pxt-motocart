@@ -1,6 +1,6 @@
 /**
  * TODO:
- * Motor accuracy (turns and distance)
+ * Revenue calculation
  */
 //% weight=100 color=#EB0DD5 icon=""
 namespace motocart {
@@ -13,6 +13,7 @@ namespace motocart {
         INVALID_PICKUP,         // attempt was made to pick up at the wrong location 
         NO_GPS_WARNING,         // cart does not have GPS
         GPS_DISABLED_WARNING,   // GPS is not enabled for the classroom
+        NO_COMPASS_WARNING,     // The cart has no compass sensor
         CANT_CLIMB
     };
     let isClassroom = checkForClassroomMarker();
@@ -394,6 +395,9 @@ player.say("Traffic Violation:"+violation);
                 break;
             case TrafficViolation.GPS_DISABLED_WARNING:
                 player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s gps_disabled")
+                break;
+            case TrafficViolation.NO_COMPASS_WARNING:
+                player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s no_compass")
                 break;
             case TrafficViolation.CANT_CLIMB:
                 player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s cant_climb")
@@ -1131,7 +1135,7 @@ updateSolarCharge()
             return;
         }
         if (!isCorrectDirection()) showViolation(TrafficViolation.WRONG_WAY);
-        if ((distance<0)||(distance>1)) return;
+        if ((distance<0)||(distance>1.25)) return;
 
         // recharge the battery based on solar chager (if one exists)
         updateSolarCharge();
@@ -1140,6 +1144,10 @@ updateSolarCharge()
         // the step size scales with the cart speed.
         let x = 0;
         let step = speedSteps[speed_count];
+        if (realism) {
+            let limit = (100-20*accuracy_count);
+            distance = distance*((1000+randint(-limit, limit))/1000)
+        }
         while (x + step <= distance) {
             moveStep(step);
             x+=step;
@@ -1161,6 +1169,10 @@ updateSolarCharge()
         if (!initialized) {
             return;
         }
+        if (realism) {
+            let limit = (100-20*accuracy_count);
+            angle = angle*((1000+randint(-limit, limit))/1000)
+        }
 
         dir = dir+angle;
         if (dir>=360.0) dir = dir-360.0;
@@ -1173,10 +1185,14 @@ updateSolarCharge()
 
     /**
      * Return the current position of the minecart expressed in world
-     * coordinates.
+     * coordinates.  Without the position sensor, only the world coordinate can
+     * be known.  Otherwise, the precise location is returned.
      */
     //% block
     export function position(): Position {
+        if (position_count == 0) {
+            return world(Math.floor(xpos),Math.floor(ypos),Math.floor(zpos));
+        }
         return world(xpos,ypos,zpos);
     }
 
@@ -1187,6 +1203,10 @@ updateSolarCharge()
      */
     //% block
     export function heading():number {
+        if (heading_count==0) {
+            showViolation(TrafficViolation.NO_COMPASS_WARNING);
+            return 0;
+        }
         return dir;
     }
 }

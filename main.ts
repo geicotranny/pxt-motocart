@@ -370,7 +370,7 @@ namespace motocart {
      */
     function showViolation(violation:TrafficViolation):void {
         // TODO: show the violation
-player.say("Traffic Violation:"+violation);
+        if (!isClassroom) return;
         switch (violation) {
             case TrafficViolation.INVALID_STOP:
                 player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s invalid_stop")
@@ -572,48 +572,66 @@ updateSolarCharge()
         // initialize the minecart
         systemMessage("Initializing Cart")
 
-        // add player to scoreboards if not already there.
-        player.execute("scoreboard players add @s road_tests 0")
-        player.execute("scoreboard players add @s upgrade_count 0")
-        player.execute("scoreboard players add @s gps_enabled 0")
-        player.execute("scoreboard players add @s gps_count 0")
-        player.execute("scoreboard players add @s battery_count 0")
-        player.execute("scoreboard players add @s solar_count 0")
-        player.execute("scoreboard players add @s power_count 0")
-        player.execute("scoreboard players add @s noteblock_count 0")
-        player.execute("scoreboard players add @s regen_count 0")
-        player.execute("scoreboard players add @s speed_count 0")
-        player.execute("scoreboard players add @s efficiency_count 0")
-        player.execute("scoreboard players add @s accuracy_count 0")
-        player.execute("scoreboard players add @s position_count 0")
-        player.execute("scoreboard players add @s heading_count 0")
-        player.execute("scoreboard players add @s ac_count 0")
-        player.execute("scoreboard players add @s ergonomics_count 0")
+        if (!isClassroom) {
+            // set default cart behavior
+            gps_count = 0;
+            battery_count = 20;
+            solar_count=0;
+            regen_count=0;
+            power_count=1;
+            speed_count=5;
+            efficiency_count=5;
+            accuracy_count=5;
+            position_count=1;
+            heading_count=1;
+            noteblock_count=0;
+            ac_count =0;
+            ergonomics_count = 0;
+            cartMass = 750;
+        } else {
+            // add player to scoreboards if not already there.
+            player.execute("scoreboard players add @s road_tests 0")
+            player.execute("scoreboard players add @s upgrade_count 0")
+            player.execute("scoreboard players add @s gps_enabled 0")
+            player.execute("scoreboard players add @s gps_count 0")
+            player.execute("scoreboard players add @s battery_count 0")
+            player.execute("scoreboard players add @s solar_count 0")
+            player.execute("scoreboard players add @s power_count 0")
+            player.execute("scoreboard players add @s noteblock_count 0")
+            player.execute("scoreboard players add @s regen_count 0")
+            player.execute("scoreboard players add @s speed_count 0")
+            player.execute("scoreboard players add @s efficiency_count 0")
+            player.execute("scoreboard players add @s accuracy_count 0")
+            player.execute("scoreboard players add @s position_count 0")
+            player.execute("scoreboard players add @s heading_count 0")
+            player.execute("scoreboard players add @s ac_count 0")
+            player.execute("scoreboard players add @s ergonomics_count 0")
 
-        // set interface behavior based on classroom settings
-        gps_enabled = checkClassroomSetting("gps_enabled=!0");
-        passengers_enabled = checkClassroomSetting("passengers=!0");
-        realism = checkClassroomSetting("realism=!0");
+            // set interface behavior based on classroom settings
+            gps_enabled = checkClassroomSetting("gps_enabled=!0");
+            passengers_enabled = checkClassroomSetting("passengers=!0");
+            realism = checkClassroomSetting("realism=!0");
 
-        // set cart behavior based on customization
-        if (checkScoreboard("gps_count=1")) gps_count = 1;
-        for (let i=0;i<=5;i++) {if (checkScoreboard("battery_count="+i)) battery_count=i;}
-        for (let i=0;i<=5;i++) {if (checkScoreboard("solar_count="+i)) solar_count=i;}
-        for (let i=0;i<=5;i++) {if (checkScoreboard("regen_count="+i)) regen_count=i;}
-        for (let i=0;i<=5;i++) {if (checkScoreboard("power_count="+i)) power_count=i;}
-        for (let i=0;i<=5;i++) {if (checkScoreboard("speed_count="+i)) speed_count=i;}
-        for (let i=0;i<=5;i++) {if (checkScoreboard("efficiency_count="+i)) efficiency_count=i;}
-        for (let i=0;i<=5;i++) {if (checkScoreboard("accuracy_count="+i)) accuracy_count=i;}
-        for (let i=0;i<=1;i++) {if (checkScoreboard("position_count="+i)) position_count=i;}
-        for (let i=0;i<=1;i++) {if (checkScoreboard("heading_count="+i)) heading_count=i;}
-        for (let i=0;i<=5;i++) {if (checkScoreboard("noteblock_count="+i)) noteblock_count=i;}
-        for (let i=0;i<=1;i++) {if (checkScoreboard("ac_count="+i)) ac_count=i;}
-        for (let i=0;i<=5;i++) {if (checkScoreboard("ergonomics_count="+i)) ergonomics_count=i;}
+            // set cart behavior based on customization
+            if (checkScoreboard("gps_count=1")) gps_count = 1;
+            for (let i=0;i<=5;i++) {if (checkScoreboard("battery_count="+i)) battery_count=i;}
+            for (let i=0;i<=5;i++) {if (checkScoreboard("solar_count="+i)) solar_count=i;}
+            for (let i=0;i<=5;i++) {if (checkScoreboard("regen_count="+i)) regen_count=i;}
+            for (let i=0;i<=5;i++) {if (checkScoreboard("power_count="+i)) power_count=i;}
+            for (let i=0;i<=5;i++) {if (checkScoreboard("speed_count="+i)) speed_count=i;}
+            for (let i=0;i<=5;i++) {if (checkScoreboard("efficiency_count="+i)) efficiency_count=i;}
+            for (let i=0;i<=5;i++) {if (checkScoreboard("accuracy_count="+i)) accuracy_count=i;}
+            for (let i=0;i<=1;i++) {if (checkScoreboard("position_count="+i)) position_count=i;}
+            for (let i=0;i<=1;i++) {if (checkScoreboard("heading_count="+i)) heading_count=i;}
+            for (let i=0;i<=5;i++) {if (checkScoreboard("noteblock_count="+i)) noteblock_count=i;}
+            for (let i=0;i<=1;i++) {if (checkScoreboard("ac_count="+i)) ac_count=i;}
+            for (let i=0;i<=5;i++) {if (checkScoreboard("ergonomics_count="+i)) ergonomics_count=i;}
 
-        // calculate the vehicle mass
-        cartMass = BASE_CHASSIS_MASS + BATTERY_MASS*(1+battery_count) + BASE_MOTOR_MASS + MOTOR_EFF_MASS*efficiency_count +
-                MOTOR_POWER_MASS*power_count + MOTOR_SPEED_MASS*speed_count + NOTEBLOCK_MASS*noteblock_count +
-                REGEN_MASS*regen_count + SOLAR_MASS*solar_count;
+            // calculate the vehicle mass
+            cartMass = BASE_CHASSIS_MASS + BATTERY_MASS*(1+battery_count) + BASE_MOTOR_MASS + MOTOR_EFF_MASS*efficiency_count +
+                    MOTOR_POWER_MASS*power_count + MOTOR_SPEED_MASS*speed_count + NOTEBLOCK_MASS*noteblock_count +
+                    REGEN_MASS*regen_count + SOLAR_MASS*solar_count;
+        }
         canClimb=false;
         if (((power_count+1)/cartMass)>=POWER_MASS_LIMIT) canClimb = true;
 

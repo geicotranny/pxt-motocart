@@ -1,6 +1,6 @@
 {
     "name": "pxt-motocart",
-    "version": "0.10.3",
+    "version": "0.10.4",
     "description": "This extension provides new blocks and API for motorized minecarts",
     "dependencies": {
         "core": "*",

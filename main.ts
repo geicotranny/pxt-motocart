@@ -16,7 +16,7 @@ namespace motocart {
         NO_COMPASS_WARNING,     // The cart has no compass sensor
         CANT_CLIMB
     };
-    let isClassroom = false; //checkForClassroomMarker();
+    let isClassroom = checkForClassroomMarker();
     let initialized = false;
     let map_tile = [
 		["XXXXXXXXXX","XXXXXXXXXX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX"],
@@ -293,7 +293,7 @@ namespace motocart {
      */
     systemMessage("Ready to Roll");
     function systemMessage(msg:string):void {
-        //player.execute("title @s actionbar "+msg);
+        player.execute("title @s actionbar "+msg);
         player.say(msg);
     };
 	

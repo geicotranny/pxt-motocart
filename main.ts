@@ -539,6 +539,7 @@ completedRuns++;
 
     // call the cart to the starting position
     player.onTellCommand("call", function () {
+player.say("Starting call function");
         motocart.summonCart();
 player.say("Cart Mass: "+cartMass+"kg  Can Climb: "+canClimb);
 updateSolarCharge() 
@@ -983,6 +984,7 @@ updateSolarCharge()
                     // here the brick has been found
                     // summon the minecart
                     let cartpos = blockpos;
+player.say("cart start position found - creating");
                     create(blockpos,0)
 
                     // based on the position of the curb to the minecart, set the player position and heading

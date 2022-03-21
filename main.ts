@@ -16,7 +16,7 @@ namespace motocart {
         NO_COMPASS_WARNING,     // The cart has no compass sensor
         CANT_CLIMB
     };
-    let isClassroom = checkForClassroomMarker();
+    let isClassroom = false; //checkForClassroomMarker();
     let initialized = false;
     let map_tile = [
 		["XXXXXXXXXX","XXXXXXXXXX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX","XX______XX"],

@@ -287,17 +287,6 @@ namespace motocart {
     let atStopState = false;
     let stoppedAtStopCount = 0;
 
-    try {
-        player.execute("scoreboard objectives add running dummy running")
-    } catch {
-        player.say("unable to create scoreboard");
-    }
-    try {
-        player.execute("scoreboard players set @s running 0");
-    } catch {
-        player.say("unable to clear scoreboard");
-    }
-
     /** 
      * This task runs once each second.  It is used to make the 
      * actionbar text persistent on the screen.
@@ -563,10 +552,21 @@ completedRuns++;
         if (blocks.testForBlock(STONE_PRESSURE_PLATE, pos(0,0,0))) {
             if (oncallblock==0) {
                 oncallblock = 1;
+                // create the scoreboard for the car running (if it does not exist)
+                try { player.execute("scoreboard objectives add runnable dummy runnable")
+                } catch {}
+                // make sure that the player exists on the scoreboard and the cart is not runnable
+                try {player.execute("scoreboard players set @s runnable 0");
+                } catch {player.say("unable to clear scoreboard");}
                 motocart.summonCart();
+                player.execute("scoreboard players set @s runnable 1");
                 player.say("Cart Mass: "+cartMass+"kg  Can Climb: "+canClimb);
                 updateSolarCharge() 
             }
+        }
+        // check to see if the cart should be allowed to run
+        if (checkScoreboard("runnable=0")) {
+            initialized = false;
         }
     })
     

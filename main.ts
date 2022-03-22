@@ -288,7 +288,7 @@ namespace motocart {
     let stoppedAtStopCount = 0;
 
     try {
-        player.execute("scoreboard objective add running dummy running")
+        player.execute("scoreboard objectives add running dummy running")
     } catch {
         player.say("unable to create scoreboard");
     }

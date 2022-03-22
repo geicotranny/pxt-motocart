@@ -286,7 +286,18 @@ namespace motocart {
     let destination=-1;
     let atStopState = false;
     let stoppedAtStopCount = 0;
-    
+
+    try {
+        player.execute("scoreboard objective add running dummy running")
+    } catch {
+        player.say("unable to create scoreboard");
+    }
+    try {
+        player.execute("scoreboard players set @s running 0");
+    } catch {
+        player.say("unable to clear scoreboard");
+    }
+
     /** 
      * This task runs once each second.  It is used to make the 
      * actionbar text persistent on the screen.

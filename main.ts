@@ -537,14 +537,28 @@ completedRuns++;
         initialized = false;
     })
 
-    // call the cart to the starting position
-    player.onTellCommand("call", function () {
-player.say("Starting call function");
-        motocart.summonCart();
-player.say("Cart Mass: "+cartMass+"kg  Can Climb: "+canClimb);
-updateSolarCharge() 
-    })
+//    // call the cart to the starting position
+//    player.onTellCommand("call", function () {
+//        motocart.summonCart();
+//        player.say("Cart Mass: "+cartMass+"kg  Can Climb: "+canClimb);
+//        updateSolarCharge() 
+//    })
 
+    // call the cart to the starting position
+    // this function replaces the onTellCommand
+    // most triggered functions do not work at all in classroom mode
+    let oncallblock = 0;
+    loops.forever(function () {
+        if (blocks.testForBlock(STONE_PRESSURE_PLATE, pos(0,0,0))) {
+            if (oncallblock==0) {
+                oncallblock = 1;
+                motocart.summonCart();
+                player.say("Cart Mass: "+cartMass+"kg  Can Climb: "+canClimb);
+                updateSolarCharge() 
+            }
+        }
+    })
+    
     function checkScoreboard(comparison:string):boolean {
         let sel = mobs.target(ALL_ENTITIES);
         sel.addRule("type", "player");

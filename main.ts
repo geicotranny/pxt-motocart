@@ -835,7 +835,7 @@ completedRuns++;
             player.execute("/summon minecart "+xpos+" "+ypos+" "+zpos);
 
             // tag the minecart to make it unique
-            player.execute("/tag @e[type=minecart,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
+            player.execute("/tag @e[type=minecart,tag=\"\",x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
         }
 
        initialized = true;

@@ -510,11 +510,11 @@ namespace motocart {
         systemMessage("Drop off passenger at "+destinations[destination].name)
     }
 
+    let completedRuns = 0;
     /**
      * Find a new passenger to pick up. If a passenger has already been located, this function does nothing.
      */
     //% block
-let completedRuns = 0;
     export function findNewPassenger() {
         // get a destination (must be different than the current destination)
         if (destination>=0) return;

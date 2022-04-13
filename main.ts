@@ -412,7 +412,7 @@ namespace motocart {
      * helper function to remove the passenger if one exists
      */
     function removePassenger():void {
-        if (!initialized) return;
+        //if (!initialized) return;
         let sel = mobs.target(ALL_ENTITIES)
         sel.addRule("type", "villager")
         sel.addRule("tag", player.name())

@@ -275,7 +275,6 @@ namespace motocart {
     let canClimb = false;
     let batteryCharge = 0;
     let recharge = 0;
-    let comfortLevel = 0;
     let efficiencyLevel = 0;
 
     // battery charging variables
@@ -371,6 +370,8 @@ namespace motocart {
     function showViolation(violation:TrafficViolation):void {
         // TODO: show the violation
         if (!isClassroom) return;
+        player.execute("scoreboard players add @s violations 1")
+
         switch (violation) {
             case TrafficViolation.INVALID_STOP:
                 player.execute("DIALOGUE OPEN @e[tag=mabel,c=1] @s invalid_stop")
@@ -459,6 +460,21 @@ namespace motocart {
             return;
         }
         removePassenger();
+        player.execute("scoreboard players add @s dropoffs 1")
+        
+        // revenue consists of a fare plus a tip.  The fare is related to the 
+        // distance traveled fror the trip. with a minimum value of 750 credits
+        let fare = Math.max(750,distanceTraveled*10);
+        // the tip is related to the speed traveled and the comfort of the passenger
+        // a speed of .1 blocks per game tick (about 2 speed arrow upgrades) will
+        // result in an average tip of 10%.  
+        let travelTime = gameplay.timeQuery(GAME_TIME)-pickupTime;
+        if (travelTime<20) travelTime = 20;
+        let speed = distanceTraveled/travelTime;
+        let tip = speed * ((ac_count+ergonomics_count+noteblock_count+1)/3);
+        let revenue = tip+fare;
+        player.execute("scoreboard players add @s revenue "+Math.round(revenue));
+
         if (passengers_enabled) {
             player.execute("playsound random.levelup");
             systemMessage("Passenger Dropped Off");
@@ -472,14 +488,17 @@ namespace motocart {
      * the destination is reached.
      */
     //% block
+    let pickupTime = 0;
+    let distanceTraveled = 0;
     export function pickUpPassenger() {
         if (!initialized) return;
         if ((has_passenger) || (!isCartAtDestination())) {
             showViolation(TrafficViolation.INVALID_PICKUP);
             return;
-        } 
+        }
+        pickupTime = gameplay.timeQuery(GAME_TIME);
+        distanceTraveled = 0;
         if (passengers_enabled) {
-
             player.execute("playsound firework.launch");
             systemMessage("Passenger Picked Up");
 
@@ -498,7 +517,7 @@ namespace motocart {
                 player.execute("/ride @e[type=minecart,tag=" + player.name() + "] summon_rider villager \"\" \"passenger\"");
 
                 // tag the passenger to make it unique
-                player.execute("/tag @e[type=villager,x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
+                player.execute("/tag @e[type=villager,tag=\"\",x=" + xpos + ",y=" + ypos + ",z=" + zpos + "] add " + player.name())
             }    
         }
         loops.pause(2000);
@@ -548,6 +567,8 @@ completedRuns++;
     // this function replaces the onTellCommand
     // most triggered functions do not work at all in classroom mode
     let oncallblock = 0;
+    let sidebarPhase = 0;
+    let sidebarDelay = 0;
     loops.forever(function () {
         if (blocks.testForBlock(STONE_PRESSURE_PLATE, pos(0,0,0))) {
             if (oncallblock==0) {
@@ -567,6 +588,29 @@ completedRuns++;
         // check to see if the cart should be allowed to run
         if (checkScoreboard("runnable=0")) {
             initialized = false;
+        }
+
+        if (!checkScoreboard("admin=1")) return;
+        sidebarDelay++;
+        if (sidebarDelay>3) {
+            sidebarDelay = 0;
+            switch (sidebarPhase) {
+                case 0:
+                    player.execute("/scoreboard objectives setdisplay sidebar dropoffs");
+                    sidebarPhase++;
+                    break;
+                case 1:
+                    player.execute("/scoreboard objectives setdisplay sidebar revenue");
+                    sidebarPhase++;
+                    break;
+                case 2:
+                    player.execute("/scoreboard objectives setdisplay sidebar violations");
+                    sidebarPhase++;
+                    break;
+                default:
+                    player.execute("/scoreboard objectives setdisplay sidebar out_of_power");
+                    sidebarPhase =0;
+            }
         }
     })
     
@@ -632,6 +676,12 @@ completedRuns++;
             player.execute("scoreboard players add @s heading_count 0")
             player.execute("scoreboard players add @s ac_count 0")
             player.execute("scoreboard players add @s ergonomics_count 0")
+
+            // clear run statistics
+            player.execute("scoreboard players set @s dropoffs 0")
+            player.execute("scoreboard players set @s revenue 0")
+            player.execute("scoreboard players set @s violations 0")
+            player.execute("scoreboard players set @s out_of_power 0")
 
             // set interface behavior based on classroom settings
             gps_enabled = checkClassroomSetting("gps_enabled=!0");
@@ -1042,7 +1092,10 @@ player.say("cart start position found - creating");
         energy_needed *= (1-EFFICIENCY_BUMP*efficiency_count);  // adjust for motor efficiency
         
         // return if there is not enough charge left in the battery
-        if (batteryCharge<energy_needed) return;
+        if (batteryCharge<energy_needed) {
+            player.execute("scoreboard players set @s out_of_power 1")
+            return;
+        }
         
         // step is the distance traveled along the heading.
         // calculate the dz and dx to travel
@@ -1195,11 +1248,13 @@ player.say("cart start position found - creating");
         }
         while (x + step <= distance) {
             moveStep(step);
+            distanceTraveled+=step;
             x+=step;
         }
         step = distance-x;
         if (step>0.0001) {
             moveStep(step);
+            distanceTraveled+=step;
         }
         if (!isInLane()) showViolation(TrafficViolation.LANE_VIOLATION);
     }

@@ -483,13 +483,13 @@ namespace motocart {
         destination = -1;
     }
 
+    let pickupTime = 0;
+    let distanceTraveled = 0;
     /**
      * Attempt to pick up the passenger.  This function should only be called when
      * the destination is reached.
      */
     //% block
-    let pickupTime = 0;
-    let distanceTraveled = 0;
     export function pickUpPassenger() {
         if (!initialized) return;
         if ((has_passenger) || (!isCartAtDestination())) {

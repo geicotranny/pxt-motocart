@@ -290,7 +290,7 @@ namespace motocart {
      * This task runs once each second.  It is used to make the 
      * actionbar text persistent on the screen.
      */
-    systemMessage("Ready to Roll");
+    systemMessage("Ready to Fuck");
     function systemMessage(msg:string):void {
         player.execute("title @s actionbar "+msg);
         player.say(msg);
